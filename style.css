@@ -95,3 +95,4 @@ main.sidebar-collapsed #workspace{width:100%}
 
 .lot-fields input[readonly]{background:#162330;color:var(--muted);cursor:default}
 #lot-width-note:not([hidden]){display:block;margin-top:5px;font-size:10px;color:var(--muted)}
+.source-link{display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex-shrink:0;border-radius:6px;color:var(--muted);transition:color .15s,background .15s}.source-link:hover{color:var(--text);background:#26364a}
