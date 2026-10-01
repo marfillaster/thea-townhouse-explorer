@@ -9,7 +9,7 @@ import { roomNames,buildWallSurfaces,buildWallExtensions,surfaceCodes } from './
 import { buildRoomFloorPlans, roomAtPoint, wallFootprint } from './room-floors.mjs';
 import { loopSegments, regionBoundary } from './selection-outlines.mjs';
 import { createMeasurements, surfaceDimensions, transformDimensions, rectangularRegions, regionProjection } from './measurements.mjs';
-import { buildFloorPlan, renderFloorPlans, formatMetres, planStyles, exportFloorPlanSvg } from './floor-plan.mjs?v=plan-counter-2';
+import { buildFloorPlan, renderFloorPlans, formatMetres, planStyles, exportFloorPlanSvg } from './floor-plan.mjs?v=plan-labels-1';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 const viewport=document.querySelector('#viewport');
 const sidebarToggle=document.querySelector('#sidebar-toggle'),sidebar=document.querySelector('#sidebar');

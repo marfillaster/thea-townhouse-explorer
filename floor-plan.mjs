@@ -132,14 +132,19 @@ export function renderFloorPlans(entries,project,mode='both'){
    parts.push(`<g class="plan-room" data-room="${room.code}" tabindex="0" role="button" aria-label="${esc(room.code+' '+room.name)}"><g class="room-fill">${polys}</g>`);
    if(show.overall&&!(show.clear&&['x0','x1','z0','z1'].every(k=>Math.abs(room.overall[k]-room.clear[k])<EPS)))parts.push(rect(room.overall,P,'room-overall'));
    const big=room.regions.reduce((a,b)=>(b.x1-b.x0)*(b.z1-b.z0)>(a.x1-a.x0)*(a.z1-a.z0)?b:a);
-   const [cx,cy]=P([(big.x0+big.x1)/2,(big.z0+big.z1)/2]);
-   parts.push(`<text class="room-label" x="${fmt(cx)}" y="${fmt(cy)}"><tspan x="${fmt(cx)}" dy="-.09" class="room-name">${esc(room.code)}</tspan><tspan x="${fmt(cx)}" dy=".24" class="room-size">${room.area.toFixed(2)} m² clear</tspan></text></g>`);
+   const [cx,cy]=P([(big.x0+big.x1)/2,(big.z0+big.z1)/2]),area=`${room.area.toFixed(2)} m² clear`;
+   // Room dimension text sits 0.06-0.20 m inside its line. Pull the lines toward
+   // the walls so that text clears the centred label; small rooms show only
+   // their code (the area stays in the selection card).
+   const c=room.clear,o=room.overall,width=c.x1-c.x0,depth=c.z1-c.z0,fits=(w,h)=>Math.min((width-w)/2,(depth-h)/2)>=.31;
+   const full=fits(Math.max(room.code.length*.12,area.length*.068),.46),label=full?{w:Math.max(room.code.length*.12,area.length*.068),h:.46}:{w:room.code.length*.12,h:.22};
+   const insetX=Math.max(.1,Math.min(.3,(width-label.w)/2-.23)),insetZ=Math.max(.1,Math.min(.3,(depth-label.h)/2-.23));
+   parts.push(full?`<text class="room-label" x="${fmt(cx)}" y="${fmt(cy)}"><tspan x="${fmt(cx)}" dy="-.09" class="room-name">${esc(room.code)}</tspan><tspan x="${fmt(cx)}" dy=".24" class="room-size">${area}</tspan></text></g>`:`<text class="room-label" x="${fmt(cx)}" y="${fmt(cy)}"><tspan class="room-name">${esc(room.code)}</tspan></text></g>`);
    // Clear dimensions run along the north and east inner faces; overall
    // (centreline) dimensions along the south and west, over the walls.
-   const c=room.clear,o=room.overall,inset=.3;
    // Step a room dimension line clear of any fixture zone it would cross.
    const clearOf=(value,axis,dir,lo,hi)=>{for(const z of zones)if(value>z[axis+'0']-EPS&&value<z[axis+'1']+EPS&&lo<z[(axis==='x'?'z':'x')+'1']&&hi>z[(axis==='x'?'z':'x')+'0'])value=dir>0?z[axis+'1']+.3:z[axis+'0']-.3;return value;};
-   const north=clearOf(c.z0+inset,'z',1,c.x0,c.x1),south=clearOf(c.z1-inset,'z',-1,c.x0,c.x1),east=clearOf(c.x1-inset,'x',-1,c.z0,c.z1),west=clearOf(c.x0+inset,'x',1,c.z0,c.z1);
+   const north=clearOf(c.z0+insetZ,'z',1,c.x0,c.x1),south=clearOf(c.z1-insetZ,'z',-1,c.x0,c.x1),east=clearOf(c.x1-insetX,'x',-1,c.z0,c.z1),west=clearOf(c.x0+insetX,'x',1,c.z0,c.z1);
    if(show.clear)dims.push(dimension([c.x0,north],[c.x1,north],[0,1],0,P,'dim-clear',false),dimension([east,c.z0],[east,c.z1],[-1,0],0,P,'dim-clear',false));
    // Skip an overall dimension that repeats the clear one (no bounding walls).
    const same=(a0,a1,b0,b1)=>show.clear&&Math.abs(a0-b0)<EPS&&Math.abs(a1-b1)<EPS;
