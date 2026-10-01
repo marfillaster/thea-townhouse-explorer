@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { defaultLots, minimumLots, validateLot, layoutBlock, restoreLots, orientWallCode } from './lot-block.mjs?v=fixed-inner-width-1';
 import { createBlockView } from './block-view.mjs?v=block-controls-rear-row-1';
 import { walls, reviewedOpenings } from './openings.mjs';
-import { planFloorConduits } from './floor-conduits.mjs';
+import { planFloorConduits } from './floor-conduits.mjs?v=conduit-routing-7';
+import { planCeilingConduits } from './ceiling-conduits.mjs?v=conduit-routing-7';
+import { wallsWithoutDoors } from './conduit-geometry.mjs?v=conduit-routing-7';
 import { roomNames,buildWallSurfaces,buildWallExtensions,surfaceCodes } from './wall-surfaces.mjs';
 import { buildRoomFloorPlans, roomAtPoint, wallFootprint } from './room-floors.mjs';
 import { loopSegments, regionBoundary } from './selection-outlines.mjs';
@@ -82,6 +84,9 @@ for(const id of ['u-bath-side','u-rear']){const wall=walls.find(w=>w.id===id);wa
 const panelMountWall=walls.find(w=>w.id==='g-bath-south'),frontMountWall=walls.find(w=>w.id==='g-front');
 const frontMountWindow=reviewedOpenings.find(o=>o.id==='living-front');
 const utilityBoxSize={width:.1016,height:.0508,depth:.0508,coverOverlap:.01,coverDepth:.002,coverGap:.001};
+// Wall conduits sit in a narrow chase cut into the wall surface and covered by
+// the finish: 10 mm behind the 75 mm masonry face, never in the wall core.
+const wallChaseOffset=.065;
 const embeddedMounts={
  panel:{wallId:panelMountWall.id,wallCode:'KT-SI',normal:-1,x:(walls.find(w=>w.id==='g-bath-door').a[0]+panelMountWall.b[0])/2,y:1.8,z:panelMountWall.a[1]-.075+.13/2,w:.30,h:.42,d:.13},
  pullBox:{wallId:frontMountWall.id,wallCode:'LR-SE',normal:1,x:frontMountWindow.x,y:.55,z:frontMountWall.a[1]+.075-utilityBoxSize.depth/2,w:utilityBoxSize.width,h:utilityBoxSize.height,d:utilityBoxSize.depth}
@@ -544,7 +549,7 @@ const conduitInfo=flexible=>({conduit:true,conduitSizeInches:conduitSpec.sizeInc
 const conduitNote=flexible=>`½ in (12.7 mm nominal) ${flexible?'flexible':'rigid'} PVC conduit. `;
 // Closely spaced radial ribs distinguish the flexible lighting conduit.
 function flexibleConduit(points,mat,floor,name,source,detail){
- const path=roundedPipe(points,.06),segments=Math.min(4096,Math.max(24,Math.ceil(path.getLength()/.005))),geometry=new THREE.TubeGeometry(path,segments,conduitSpec.radius,8,false),positions=geometry.attributes.position;
+ const path=roundedPipe(points,.15),segments=Math.min(4096,Math.max(24,Math.ceil(path.getLength()/.005))),geometry=new THREE.TubeGeometry(path,segments,conduitSpec.radius,8,false),positions=geometry.attributes.position;
  for(let i=0;i<=segments;i++){
   const center=path.getPointAt(i/segments),factor=i%2?.82:1;
   for(let j=0;j<=8;j++){const k=i*9+j,p=new THREE.Vector3().fromBufferAttribute(positions,k).sub(center).multiplyScalar(factor).add(center);positions.setXYZ(k,p.x,p.y,p.z);}
@@ -585,6 +590,11 @@ const switchGap={start:mainEntry.x+mainEntry.w/2,end:livingFront.x-livingFront.w
 const switchCenter=(switchGap.start+switchGap.end)/2,switchY=.25+1.35,frontWallZ=mainEntry.z;
 const userElectrical={switchGap,switchY,footOffset:.3048,switches:[],outlets:[]};
 const plateMat=material(0xe5e3dc),rockerMat=material(0xb6bec4);
+// Switch conduits drop in the wall-surface chase into the box top.
+function switchBoxTop(plate,normal=plate.userData.normal??[0,-1]){
+ const p=plate.position,inset=.095-wallChaseOffset;
+ return [p.x-normal[0]*inset,p.y+plate.geometry.parameters.height/2,p.z-normal[1]*inset];
+}
 // Collect control paths; power distribution is rebuilt from the circuit schedule.
 const controlPaths=[];
 function correctedRoute(name,points,role,floor=0,extra={}){controlPaths.push({name,points,role,floor,...extra});}
@@ -599,10 +609,8 @@ const canopyLight={x:mainEntry.x,y:canopySoffits[0].position.y-.025,z:mainEntry.
 const holder=part(new THREE.CylinderGeometry(.068,.068,.05,16),fixtureMat,'electrical',0,[canopyLight.x,canopyLight.y,canopyLight.z],'Canopy lighting socket','E-1','Canopy socket mounted beneath the flat soffit, fed by concealed conduit from the right 2-gang plate on LR-SI. Position and fitting profile are approximate.',false);
 Object.assign(holder.userData,{canopyLight:true,controlledBy:'right plate · canopy gang'});
 const lamp=part(new THREE.SphereGeometry(.045,12,8),material(0xf8dfaa),'electrical',0,[canopyLight.x,canopyLight.y-.065,canopyLight.z],'Canopy lamp','E-1','Lamp attached to the canopy socket; controlled by the canopy gang.',false);lamp.userData.canopyLight=true;
-correctedRoute('Canopy concealed switched conduit',[[switchCenter+.11,switchY,frontWallZ],[switchCenter+.11,2.59,frontWallZ],[canopyLight.x,2.59,frontWallZ],[canopyLight.x,2.59,canopyLight.z],[canopyLight.x,canopyLight.y,canopyLight.z]],'canopy');
-correctedRoute('Carport switched conduit',[[switchCenter+.11,switchY,frontWallZ],[switchCenter+.11,2.9,frontWallZ],[switchCenter+.11,2.9,2.6],[1.2,2.9,2.6]],'carport');
-correctedRoute('Living switched conduit',[[switchCenter-.11,switchY,frontWallZ],[switchCenter-.11,2.9,frontWallZ],[3.85,2.9,frontWallZ],[3.85,2.9,2.3]],'living');
-correctedRoute('Dining switched conduit',[[switchCenter-.11,switchY,frontWallZ],[switchCenter-.11,2.9,frontWallZ],[3.85,2.9,frontWallZ],[3.85,2.9,.3]],'dining');
+const canopySwitchTop=switchBoxTop(userElectrical.switches.find(m=>m.userData.plateSide==='right'));
+correctedRoute('Canopy concealed switched conduit',[canopySwitchTop,[canopySwitchTop[0],2.59,canopySwitchTop[2]],[canopyLight.x,2.59,canopySwitchTop[2]],[canopyLight.x,2.59,canopyLight.z],[canopyLight.x,canopyLight.y,canopyLight.z]],'canopy');
 // LR-SI outlet aligns below the right lighting switch; LR-EI remains window-referenced.
 const outletSpecs=[
  {code:'LR-SI',x:userElectrical.switches.find(m=>m.userData.plateSide==='right').position.x,y:.55,z:frontWallZ-.095,w:.12,d:.04,along:'x',detail:'Vertically aligned below the right lighting switch plate on LR-SI (canopy/carport gangs).'},
@@ -679,7 +687,6 @@ const guestRoomSwitch=propertySwitch('GR-WI',0,guestDoor.x-.095,guestRoomElectri
 guestRoomElectrical.switch=guestRoomSwitch.plate;
 const guestRoomLight=planLights.find(m=>m.userData.floor===0&&m.position.x===1.2&&m.position.z===0);
 Object.assign(guestRoomLight.userData,{controlledBy:'GR-WI guest-room switch',roomCode:'GR'});guestRoomElectrical.light=guestRoomLight;
-correctedRoute('Guest bedroom switched concealed conduit',[guestRoomSwitch.wallPoint,[guestDoor.x,2.90,guestSwitchZ],[guestRoomLight.position.x,2.90,guestSwitchZ],[guestRoomLight.position.x,2.90,guestRoomLight.position.z],guestRoomLight.position.toArray()],'guest-bedroom-interior');
 const masterSwitchStart=objects.length;
 const masterSwitch=propertySwitch('MB-W1I',1,2.455,4.45,-1.17,[-1,0],['Master bedroom','Master east eave light'],'Left of the master-bedroom door when facing the door from inside the bedroom.');
 objects.slice(masterSwitchStart).forEach(m=>Object.assign(m.userData,{roofVariant:'end',masterRoomSwitch:true}));
@@ -688,7 +695,6 @@ const innerMasterSwitch=propertySwitch('MB-W1I',1,2.455,4.45,-1.17,[-1,0],['Mast
 objects.slice(innerMasterSwitchStart).forEach(m=>Object.assign(m.userData,{roofVariant:'inner',masterRoomSwitch:true}));
 const r1RoomSwitch=propertySwitch('R1-NI',1,bedroomConvenience.r1DoorLeftX,bedroomConvenience.r1SwitchY,r1Door.z+.095,[0,1],['Bedroom 1'],'Left of the door when facing R1-NI from inside, directly above the convenience outlet. Door-edge offset and mounting height remain approximate.');
 bedroomConvenience.roomSwitch=r1RoomSwitch.plate;
-correctedRoute('Bedroom 1 switched concealed conduit',[r1RoomSwitch.wallPoint,[r1RoomSwitch.wallPoint[0],5.65,r1Door.z],[3.8,5.65,r1Door.z],[3.8,5.65,1.9]],'bedroom-1-interior',1);
 // The stairwell ceiling point is controlled from both ends of the stairs.
 const stairNorthWall=walls.find(w=>w.id==='g-rear'),landingSouthWall=walls.find(w=>w.id==='u-bedroom-entry');
 const stairwellLighting={id:'stairwell-light',switchType:'two-way',mountHeight:1.35,ceilingY:5.65,lightX:stair.turn.x,lightZ:(runStart+runEnd)/2,switches:[]};
@@ -699,14 +705,11 @@ for(const [switchObject,other] of [[lowerStairSwitch,'LD-SI'],[upperStairSwitch,
 const stairLight=part(new THREE.CylinderGeometry(.085,.085,.045,16),fixtureMat,'electrical',1,[stairwellLighting.lightX,stairwellLighting.ceilingY-.045/2,stairwellLighting.lightZ],'Stairwell ceiling lighting outlet','User location · E-1',stairLightDetail,false);
 Object.assign(stairLight.userData,{stairwellLight:true,circuitId:stairwellLighting.id,controlledBy:['KT-NI','LD-SI'],mounting:'ceiling'});stairwellLighting.light=stairLight;propertyElectrical.lights.push(stairLight);
 const stairBulb=part(new THREE.SphereGeometry(.045,12,8),material(0xf8dfaa),'electrical',1,[stairwellLighting.lightX,stairwellLighting.ceilingY-.065,stairwellLighting.lightZ],'Stairwell ceiling lamp','User location · E-1',stairLightDetail,false);Object.assign(stairBulb.userData,{stairwellLight:true,circuitId:stairwellLighting.id,controlledBy:['KT-NI','LD-SI']});
-// Schematic traveler pair is split at the floor datum for floor/explode views.
-for(const [traveler,offset]of [['A',-.018],['B',.018]]){
- const lowerPoint=[lowerStairSwitch.wallPoint[0]+offset,lowerStairSwitch.wallPoint[1],lowerStairSwitch.wallPoint[2]],upperPoint=[upperStairSwitch.wallPoint[0]+offset,upperStairSwitch.wallPoint[1],upperStairSwitch.wallPoint[2]],riserX=2.55+offset;
- correctedRoute('Stairwell two-way traveler '+traveler+' · ground',[lowerPoint,[lowerPoint[0],2.90,stairNorthWall.a[1]],[riserX,2.90,stairNorthWall.a[1]],[riserX,2.90,bathroomPartition.a[1]],[riserX,3.10,bathroomPartition.a[1]]],'stairwell-traveler-'+traveler,0);
- correctedRoute('Stairwell two-way traveler '+traveler+' · upper',[[riserX,3.10,bathroomPartition.a[1]],[riserX,5.65,bathroomPartition.a[1]],[riserX,5.65,landingSouthWall.a[1]],[upperPoint[0],5.65,landingSouthWall.a[1]],upperPoint],'stairwell-traveler-'+traveler,1);
-}
-// Only the stair light's terminal branch enters the void, at the upper ceiling.
-correctedRoute('Stairwell concealed switched ceiling feed',[upperStairSwitch.wallPoint,[upperStairSwitch.wallPoint[0],5.65,landingSouthWall.a[1]],[4.00,5.65,landingSouthWall.a[1]],[4.00,5.65,stairwellLighting.lightZ],[stairwellLighting.lightX,5.65,stairwellLighting.lightZ]],'stairwell-ceiling-feed',1);
+// Upper bathroom switch sits inside the bathroom beside the door, on the latch side.
+const upperBathDoor=openingById('upper-bath-door'),upperBathWallZ=walls.find(w=>w.id==='u-bath-south').a[1];
+const upperBathSwitch=propertySwitch('B1-S2I',1,upperBathDoor.x-upperBathDoor.w/2-.20,3.10+stairwellLighting.mountHeight,upperBathWallZ-.095,[0,-1],['Upper bathroom'],'Inside the upper bathroom beside the door on B1-S2I, on the latch side. Shown 200 mm from the door edge and 1.35 m above the floor; these offsets are approximate.');
+const upperBathLight=planLights.find(m=>m.userData.floor===1&&m.position.x===3.1&&m.position.z===-2.9);
+Object.assign(upperBathLight.userData,{controlledBy:'B1-S2I upper-bathroom switch',roomCode:'B1'});
 const serviceDoor=openingById('service-door');
 const kitchenSwitchZ=(kWindow.z+kWindow.w/2+serviceDoor.z-serviceDoor.w/2)/2;
 const kitchenSwitch=propertySwitch('KT-E1I',0,2.145,1.60,kitchenSwitchZ,[1,0],['Kitchen','Master north eave light'],'Between the service door and kitchen window on KT-E1I. Two vertically arranged gangs fit the narrow opening gap.',true);
@@ -733,23 +736,19 @@ for(const [variant,roof,roofSoffit,edgeY] of [['end',balconyRoof,balconySoffit,b
  const start=objects.length;
  const light=eaveLight('BL-NI',balconyGapX,roofSoffit.position.y-.035,roof.endZ-.14,'MB-SI balcony switch','On the balcony roof eave, centered in the gap between the master-bedroom door and window.');
  objects.slice(start).forEach(m=>Object.assign(m.userData,{balconyLight:true,roofVariant:variant}));
- correctedRoute('Balcony eave concealed switched conduit',[balconySwitch.wallPoint,[balconyGapX,5.72,balconyDoor.z],[balconyGapX,edgeY+.02,balconyDoor.z],[balconyGapX,edgeY+.02,light[2]],light],'balcony-eave',1,{roofVariant:variant});
+ const top=switchBoxTop(balconySwitch.plate);
+ correctedRoute('Balcony eave concealed switched conduit',[top,[top[0],edgeY+.02,top[2]],[balconyGapX,edgeY+.02,light[2]],light],'balcony-eave',1,{roofVariant:variant});
 }
 
 // Ceiling closure under the short rear roof projection.
-correctedRoute('Master bedroom switched concealed conduit',[masterSwitch.wallPoint,[2.55,5.65,-1.17],[1.2,5.65,.8]],'master-interior',1);
-correctedRoute('Master east eave switched concealed conduit',[masterSwitch.wallPoint,[2.55,5.65,-1.17],[2.55,6.12,-1.17],[0,6.12,masterSide.z],[eastEaveLight[0],6.12,masterSide.z],eastEaveLight],'master-east-eave',1,{roofVariant:'end'});
-correctedRoute('Kitchen switched concealed conduit',[kitchenSwitch.wallPoint,[2.05,2.90,kitchenSwitchZ],[3,2.90,-2.70],[3,kitchenSoffit.bottom-.0225,-2.70]],'kitchen-interior');
-// Continuous feed split at the second-floor datum so floor separation stays useful.
-correctedRoute('North eave switched feed · lower',[kitchenSwitch.wallPoint,[2.05,2.90,kitchenSwitchZ],[2.05,2.90,bathroomPartition.a[1]],[2.55,2.90,bathroomPartition.a[1]],[2.55,3.10,bathroomPartition.a[1]]],'master-north-eave',0);
+const masterSwitchTop=switchBoxTop(masterSwitch.plate);
+correctedRoute('Master east eave switched concealed conduit',[masterSwitchTop,[masterSwitchTop[0],6.12,masterSwitchTop[2]],[0,6.12,masterSide.z],[eastEaveLight[0],6.12,masterSide.z],eastEaveLight],'master-east-eave',1,{roofVariant:'end'});
 // Rise within the master rear wall; keep the eave leg clear of the bathroom firewall.
-for(const [variant,light,undersideAt] of [
+// The switched leg reaches this wall top through the shared ceiling conduits.
+const northEaveTails=[
  ['end',northEaveLight,z=>balconyRoof.heightAt(z)+.14-.035/2*Math.sqrt(1+balconyRoof.pitch**2)],
  ['inner',innerNorthEaveLight,innerRoofUndersideAt]
-]){
- const wallZ=masterNorthWall.a[1],x=light[0];
- correctedRoute('North eave switched feed · upper',[[2.55,3.10,bathroomPartition.a[1]],[2.55,5.65,wallZ],[x,5.65,wallZ],[x,undersideAt(wallZ)-.06,wallZ],[x,undersideAt(light[2])-.06,light[2]],light],'master-north-eave',1,{roofVariant:variant});
-}
+].map(([variant,light,undersideAt])=>{const wallZ=masterNorthWall.a[1]+wallChaseOffset,x=light[0];return {variant,point:[x,wallZ],tail:[[x,undersideAt(wallZ)-.06,wallZ],[x,undersideAt(light[2])-.06,light[2]],light]};});
 
 // Owner-specified breaker schedule. Colors identify circuits, not wire colors.
 const electricalCircuits=[
@@ -796,21 +795,34 @@ function circuitRoute(id,floor,name,points,extra={}){
  const clean=points.filter((p,i)=>!i||p.some((v,j)=>Math.abs(v-points[i-1][j])>.00001));
  if(clean.length<2)return;
  const c=circuitById[id],start=objects.length;
- const detail=conduitNote(id==='lighting')+`${c.name} · ${c.amps} A branch from the 60 A main service. ${c.routing==='floor-chase'?'Outlet conduits use direct diagonal connections in shallow chipped floor channels covered by the finish. Outlets on the same circuit and physical wall share a channel beside that wall, with short concealed wall rises. Channel depth and concealed wall crossings are schematic.':c.routing==='underfloor'?'Horizontal outlet runs are under the floor, rising within walls to the outlet.':'Lighting and switch distribution runs at ceilings, with concealed wall drops to switches.'} Locations and bends are schematic; colors identify circuit groups.`;
+ const detail=conduitNote(id==='lighting')+`${c.name} · ${c.amps} A branch from the 60 A main service. ${c.routing==='floor-chase'?'Outlet conduits use direct diagonal connections in shallow chipped floor channels covered by the finish. Outlets on the same circuit and physical wall share a channel beside that wall, with short concealed wall rises. Channel depth and concealed wall crossings are schematic.':c.routing==='underfloor'?'Horizontal outlet runs are under the floor, rising within walls to the outlet.':'Lighting and switch distribution is one straight-run conduit tree per ceiling, with junction boxes at tees and concealed wall drops to switches. Switch legs and stair travelers share these conduits.'} Locations and bends are schematic; colors identify circuit groups.`;
  if(id==='lighting')flexibleConduit(clean,circuitMaterials[id],floor,name,'User circuit schedule · E-1',detail);
- else if(extra.finishCovered)part(new THREE.TubeGeometry(roundedPipe(clean,.06),Math.max(12,(clean.length-1)*16),conduitSpec.radius,8,false),circuitMaterials[id],'electrical',floor,[0,0,0],name,'User circuit schedule · E-1',detail,false);
+ else if(extra.finishCovered)part(new THREE.TubeGeometry(roundedPipe(clean,.10),Math.max(12,(clean.length-1)*16),conduitSpec.radius,8,false),circuitMaterials[id],'electrical',floor,[0,0,0],name,'User circuit schedule · E-1',detail,false);
  else route('electrical',floor,clean,conduitSpec.radius,circuitMaterials[id],name,'User circuit schedule · E-1',detail);
  objects.slice(start).forEach(m=>Object.assign(m.userData,{...conduitInfo(id==='lighting'),circuitId:id,circuitName:c.name,breakerAmps:c.amps,concealed:true,routingMode:c.routing,routePoints:clean,...extra}));
  circuitRoutes.push({id,floor,name,points:clean,...conduitInfo(id==='lighting'),...extra});
 }
-const panelPort=id=>[servicePanel.x+(electricalCircuits.findIndex(c=>c.id===id)-3)*.03,servicePanel.y-.16,bathroomPartition.a[1]];
+// Panel feeds leave the cabinet in the KT-SI kitchen-face chase. Circuits for
+// the second floor rise at the divider end of that chase, which continues above
+// the slab on the master face of the divider.
+const serviceRiser={x:2.55-wallChaseOffset,z:bathroomPartition.a[1]-wallChaseOffset};
+const panelPort=id=>[servicePanel.x+(electricalCircuits.findIndex(c=>c.id===id)-3)*.03,servicePanel.y-.16,serviceRiser.z];
 const powerLevels=[-.04,2.86]; // Retained dedicated appliance routes.
 const floorChase={finishedLevels:[.25,3.10],centerDepth:.025,radius:conduitSpec.radius,wallOffset:.104};
+// Floor channels stay within each storey's slab; doorways are open at floor level.
+const floorRegions=[
+ [{x0:2.55,x1:5.05,z0:-1.115,z1:3.825},{x0:2.05,x1:5.05,z0:-3.825,z1:-1.115},{x0:0,x1:2.55,z0:-1.115,z1:1.125},{x0:0,x1:2.05,z0:-2.275,z1:-1.115}],
+ [{x0:0,x1:2.55,z0:-2.275,z1:3.825},{x0:2.55,x1:5.05,z0:-.725,z1:3.825},{x0:2.05,x1:4.05,z0:-3.825,z1:-.725}]
+];
+// Outlets fed through a neighbouring outlet box rather than a channel tap.
+const outletPassthroughs={'LR-SI':'LR-EI'};
+const floorWalls=[0,1].map(f=>wallsWithoutDoors(walls.filter(w=>w.floor===f),reviewedOpenings));
+const floorDoorways=[0,1].map(f=>reviewedOpenings.filter(o=>o.floor===f&&o.code.startsWith('D')).map(o=>{const w=walls.find(w=>w.id===o.wall),length=Math.hypot(w.b[0]-w.a[0],w.b[1]-w.a[1]);return {point:[o.x,o.z],along:[(w.b[0]-w.a[0])/length,(w.b[1]-w.a[1])/length]};}));
 for(const c of electricalCircuits.filter(c=>c.routing!=='ceiling')){
  const outlets=powerOutlets.filter(m=>m.userData.circuitId===c.id),floor=outlets[0].userData.floor,inChase=c.routing==='floor-chase';
  const level=inChase?floorChase.finishedLevels[floor]-floorChase.centerDepth:powerLevels[floor]+(electricalCircuits.indexOf(c)-3)*.008,port=panelPort(c.id);
  const routeData=inChase?{floorChaseY:level,finishCovered:true}:{underfloorY:level};
- const datum=[2.55,3.10,port[2]];
+ const datum=[serviceRiser.x,3.10,serviceRiser.z];
  if(floor)circuitRoute(c.id,0,c.name+' · dedicated panel riser',[port,[port[0],2.90,port[2]],[datum[0],2.90,port[2]],datum],{via:'KT-SI ceiling',panelFeed:true,homeRun:c.dedicated});
  const start=floor?datum:port;
  const floorStart=[start[0],level,start[2]];
@@ -819,52 +831,72 @@ for(const c of electricalCircuits.filter(c=>c.routing!=='ceiling')){
   const face=propertyWallFaces.find(f=>f.code===m.userData.wallCode),wall=walls.find(w=>w.id===face.wallId);
   return {id:m.uuid,wallCode:m.userData.wallCode,wall,normal:face.axis==='x'?[face.normal,0]:[0,face.normal],exterior:face.type==='E',point:[m.position.x,m.position.z]};
  });
- const plan=planFloorConduits([floorStart[0],floorStart[2]],routeOutlets,floorChase.wallOffset);
+ const fedThrough=routeOutlets.filter(o=>routeOutlets.some(p=>p.wallCode===outletPassthroughs[o.wallCode]));
+ const plan=planFloorConduits([floorStart[0],floorStart[2]],routeOutlets.filter(o=>!fedThrough.includes(o)),floorChase.wallOffset,{walls:floorWalls[floor],regions:floorRegions[floor],doorways:floorDoorways[floor]});
  const onFloor=p=>[p[0],level,p[1]];
  for(const link of plan.links)circuitRoute(c.id,floor,c.name+' · direct floor connection',link.points.map(onFloor),{wallId:link.wallId,directFloorLink:true,homeRun:!!c.dedicated,...routeData});
  for(const group of plan.groups){
   const wallCodes=[...new Set(group.taps.map(t=>t.wallCode))];
   circuitRoute(c.id,floor,'Shared wall-side floor channel · '+wallCodes.join(' / '),group.points.map(onFloor),{sharedTrunk:true,wallId:group.wallId,wallCodes,outletIds:group.taps.map(t=>t.id),wallOffset:floorChase.wallOffset,...routeData});
   for(const tap of group.taps){
-   const m=outlets.find(m=>m.uuid===tap.id),p=[tap.wallPoint[0],m.position.y,tap.wallPoint[1]];
-   circuitRoute(c.id,floor,'Floor-channel outlet rise · '+tap.wallCode,[onFloor(tap.point),onFloor(tap.wallPoint),p,m.position.toArray()],{outletId:m.uuid,wallCode:tap.wallCode,wallId:group.wallId,homeRun:!!c.dedicated,...routeData});
+   // One floor-to-wall bend: rise in the wall-surface chase into the box bottom.
+   const m=outlets.find(m=>m.uuid===tap.id),face=[m.position.x-tap.wallPoint[0],m.position.z-tap.wallPoint[1]],faceLength=Math.hypot(...face)||1;
+   const rise=[tap.wallPoint[0]+face[0]/faceLength*wallChaseOffset,tap.wallPoint[1]+face[1]/faceLength*wallChaseOffset],boxBottom=m.position.y-(m.geometry.parameters.height??.16)/2;
+   circuitRoute(c.id,floor,'Floor-channel outlet rise · '+tap.wallCode,[onFloor(tap.point),onFloor(rise),[rise[0],boxBottom,rise[1]]],{outletId:m.uuid,wallCode:tap.wallCode,wallId:group.wallId,homeRun:!!c.dedicated,...routeData});
   }
  }
+ // A passthrough is its own conduit: down from the feeding box, across the floor
+ // and up into the fed box, entering 30 mm beside that box's incoming rise.
+ const outletChase=(o,shift=0)=>{
+  const w=o.wall,length=Math.hypot(w.b[0]-w.a[0],w.b[1]-w.a[1]),u=[(w.b[0]-w.a[0])/length,(w.b[1]-w.a[1])/length],along=(o.point[0]-w.a[0])*u[0]+(o.point[1]-w.a[1])*u[1]+shift;
+  return [w.a[0]+u[0]*along+o.normal[0]*wallChaseOffset,w.a[1]+u[1]*along+o.normal[1]*wallChaseOffset];
+ };
+ const outletBottom=o=>{const m=outlets.find(m=>m.uuid===o.id);return m.position.y-(m.geometry.parameters.height??.16)/2;};
+ for(const child of fedThrough){
+  const parent=routeOutlets.find(o=>o.wallCode===outletPassthroughs[child.wallCode]);
+  const w=parent.wall,toward=Math.sign((child.point[0]-parent.point[0])*(w.b[0]-w.a[0])+(child.point[1]-parent.point[1])*(w.b[1]-w.a[1]))||1;
+  const from=outletChase(parent,.03*toward),to=outletChase(child);
+  circuitRoute(c.id,floor,'Outlet passthrough · '+parent.wallCode+' → '+child.wallCode,[[from[0],outletBottom(parent),from[1]],onFloor(from),onFloor(to),[to[0],outletBottom(child),to[1]]],{outletId:child.id,passthroughFrom:parent.wallCode,wallCode:child.wallCode,homeRun:!!c.dedicated,...routeData});
+ }
 }
-// A common lighting feed supplies both floor ceilings. Existing switched legs
-// keep their control assignments, including the stair two-way traveler pair.
-const lightPort=panelPort('lighting'),lightSpine=3.95,lightRiserZ=bathroomPartition.a[1];
-circuitRoute('lighting',0,'16 A lighting · panel to ground ceiling',[lightPort,[lightPort[0],2.90,lightRiserZ],[2.55,2.90,lightRiserZ],[2.55,3.10,lightRiserZ]],{via:'KT-SI ceiling',panelFeed:true});
-circuitRoute('lighting',1,'16 A lighting · upper ceiling riser',[[2.55,3.10,lightRiserZ],[2.55,5.65,lightRiserZ],[lightSpine,5.65,lightRiserZ]],{panelFeed:true});
-circuitRoute('lighting',0,'Lighting · KT-SI ceiling distribution',[[2.55,2.90,lightRiserZ],[lightSpine,2.90,lightRiserZ]],{via:'KT-SI ceiling'});
+// A common lighting feed rises from KT-SI to both ceilings. Each ceiling is one
+// conduit tree of straight runs with junction boxes at tees; switch legs and the
+// stair two-way travelers share these conduits rather than parallel runs.
+const lightPort=panelPort('lighting'),lightRiserZ=serviceRiser.z,lightRiserX=serviceRiser.x;
+circuitRoute('lighting',0,'16 A lighting · panel to ground ceiling',[lightPort,[lightPort[0],2.90,lightRiserZ],[lightRiserX,2.90,lightRiserZ],[lightRiserX,3.10,lightRiserZ]],{via:'KT-SI ceiling',panelFeed:true});
+circuitRoute('lighting',1,'16 A lighting · upper ceiling riser',[[lightRiserX,3.10,lightRiserZ],[lightRiserX,5.65,lightRiserZ]],{panelFeed:true});
+// Runs stay under the slab above each ceiling: the ground ceiling has no slab
+// over the stair void or the open service area; the upper ceiling stops at the balcony.
+const ceilingRegions=[
+ floorRegions[1],
+ [{x0:0,x1:5.05,z0:-2.275,z1:2.325},{x0:2.55,x1:5.05,z0:2.325,z1:3.825},{x0:2.05,x1:5.05,z0:-3.825,z1:-2.275}]
+];
+const ceilingSeeds=[[[[lightPort[0],lightRiserZ],[lightRiserX,lightRiserZ]]],[[[lightRiserX,lightRiserZ]]]];
+const ceilingPlans=[];
 for(const floor of [0,1]){
- const ceiling=floor?5.65:2.90,junctionZs=[lightRiserZ];
- for(const m of planLights.filter(m=>m.userData.floor===floor)){
-  const p=m.position.toArray();junctionZs.push(p[2]);circuitRoute('lighting',floor,m.userData.name+' · ceiling branch',[[lightSpine,ceiling,p[2]],[p[0],ceiling,p[2]],p],{lightId:m.uuid});
- }
- for(const m of [...userElectrical.switches,...propertyElectrical.switches].filter(m=>m.userData.floor===floor)){
+ const ceiling=floor?5.65:2.90,terminals=[];
+ for(const m of [...planLights,stairLight].filter(m=>m.userData.floor===floor)){
   const p=m.position.toArray();
-  const n=m.userData.normal??(m.userData.wallCode==='MB-W1I'?[-1,0]:m.userData.wallCode==='KT-E1I'?[1,0]:m.userData.wallCode==='KT-NI'||m.userData.wallCode==='R1-NI'?[0,1]:[0,-1]);
-  const wall=[p[0]-n[0]*.095,p[1],p[2]-n[1]*.095];
-  junctionZs.push(wall[2]);
-  circuitRoute('lighting',floor,'Ceiling switch feed · '+(m.userData.wallCode??'LR-SI'),[[lightSpine,ceiling,wall[2]],[wall[0],ceiling,wall[2]],wall,p],{switchId:m.uuid,controls:m.userData.controls,...(m.userData.roofVariant?{roofVariant:m.userData.roofVariant}:{})});
+  terminals.push({id:m.uuid,label:m.userData.name,point:[p[0],p[2]],tails:[{points:[p],extra:{lightId:m.uuid}}]});
  }
- // End the upper trunk at its outermost connected light/switch branches.
- const [northZ,southZ]=floor?[Math.min(...junctionZs),Math.max(...junctionZs)]:[-3.825,3.825];
- circuitRoute('lighting',floor,'Lighting · shared ceiling trunk',[[lightSpine,ceiling,northZ],[lightSpine,ceiling,southZ]],{sharedTrunk:true});
-}
-for(const path of controlPaths.filter(p=>!p.role.startsWith('outlet-')&&!p.role.startsWith('property-'))){
- const points=[path.points[0]];
- // Vertical wall transitions precede ceiling runs; no diagonal room crossings.
- for(const b of path.points.slice(1)){
-  const a=points.at(-1);
-  if(Math.abs(a[1]-b[1])>.00001&&(Math.abs(a[0]-b[0])>.00001||Math.abs(a[2]-b[2])>.00001))points.push([a[0],b[1],a[2]]);
-  const last=points.at(-1);
-  if(Math.abs(last[0]-b[0])>.00001&&Math.abs(last[2]-b[2])>.00001)points.push([b[0],b[1],last[2]]);
-  points.push(b);
+ // End and inner master switches share one box location.
+ const boxes=new Map();
+ for(const m of [...userElectrical.switches,...propertyElectrical.switches].filter(m=>m.userData.floor===floor)){
+  const wall=switchBoxTop(m),key=wall.map(v=>v.toFixed(3)).join(',');
+  if(!boxes.has(key))boxes.set(key,{id:m.uuid,label:'switch drop · '+(m.userData.wallCode??'LR-SI'),point:[wall[0],wall[2]],tails:[{points:[wall],extra:{switchId:m.uuid,switchWallCode:m.userData.wallCode??'LR-SI'}}],controls:[]});
+  boxes.get(key).controls.push(...m.userData.controls);
  }
- circuitRoute('lighting',path.floor,path.name,points,{correctedCircuit:path.role,controls:path.role,...(path.roofVariant?{roofVariant:path.roofVariant}:{})});
+ for(const b of boxes.values()){b.controls=[...new Set(b.controls)];b.tails[0].extra.controls=b.controls;terminals.push(b);}
+ if(floor)terminals.push({id:'north-eave',label:'master north eave light',point:northEaveTails[0].point,tails:northEaveTails.map(t=>({points:t.tail,extra:{controls:'master-north-eave',roofVariant:t.variant}}))});
+ const plan=planCeilingConduits({seeds:ceilingSeeds[floor],terminals,walls:walls.filter(w=>w.floor===floor),regions:ceilingRegions[floor]});
+ ceilingPlans.push({floor,...plan});
+ for(const link of plan.links){
+  const t=terminals.find(t=>t.id===link.id);
+  for(const tail of t.tails)circuitRoute('lighting',floor,'Lighting ceiling run · '+t.label,[[link.from[0],ceiling,link.from[1]],[link.to[0],ceiling,link.to[1]],...tail.points],{ceilingRun:true,wallCrossings:link.crossings,...tail.extra});
+ }
 }
+// Switched legs outside the ceiling trees: canopy, balcony and east eave.
+for(const path of controlPaths.filter(p=>!p.role.startsWith('outlet-')&&!p.role.startsWith('property-')))circuitRoute('lighting',path.floor,path.name,path.points,{correctedCircuit:path.role,controls:path.role,...(path.roofVariant?{roofVariant:path.roofVariant}:{})});
 function showAllCircuits(){for(const c of electricalCircuits)state.circuits[c.id]=true;clearSelection();sync();}
 function isolateCircuit(id){for(const c of electricalCircuits)state.circuits[c.id]=c.id===id;isolate('electrical');}
 
@@ -883,9 +915,12 @@ for(const side of [-1,1]){
 }
 const entranceBox=box('electrical',0,serviceEntrance.x,serviceEntrance.y,serviceEntrance.z,.24,.32,.14,servicePvcMat,'Service entrance · southwest plot corner','User correction',serviceConnectionNote);entranceBox.userData.serviceEntrance=true;
 const pullBoxPoint=[pullBoxSpec.x,pullBoxSpec.y,pullBoxSpec.z];
+// Both service conduits use the exterior-face chase below the pull box and the
+// kitchen-face chase below the panel.
+const pullBoxChaseZ=frontWallZ+wallChaseOffset,pullBoxBottom=[pullBoxSpec.x,pullBoxSpec.y-pullBoxSpec.height/2,pullBoxChaseZ];
 const serviceConnectionRoutes=[
- {name:'Service entrance to LR-SE pull box · underground PVC',routing:'underground',points:[[serviceEntrance.x,serviceEntrance.y,serviceEntrance.z],[serviceEntrance.x,serviceInterconnect.undergroundY,serviceEntrance.z],[pullBoxSpec.x,serviceInterconnect.undergroundY,serviceEntrance.z],[pullBoxSpec.x,serviceInterconnect.undergroundY,pullBoxSpec.z],pullBoxPoint]},
- {name:'LR-SE pull box to service panel · home run',routing:'floor-chase',points:[pullBoxPoint,[pullBoxSpec.x,pullBoxSpec.y,frontWallZ],[pullBoxSpec.x,.225,frontWallZ],[servicePanel.x,.225,bathroomPartition.a[1]],[servicePanel.x,servicePanel.y,bathroomPartition.a[1]],[servicePanel.x,servicePanel.y,servicePanel.z]]}
+ {name:'Service entrance to LR-SE pull box · underground PVC',routing:'underground',points:[[serviceEntrance.x,serviceEntrance.y,serviceEntrance.z],[serviceEntrance.x,serviceInterconnect.undergroundY,serviceEntrance.z],[pullBoxSpec.x,serviceInterconnect.undergroundY,serviceEntrance.z],[pullBoxSpec.x,serviceInterconnect.undergroundY,pullBoxChaseZ],pullBoxBottom]},
+ {name:'LR-SE pull box to service panel · home run',routing:'floor-chase',points:[pullBoxBottom,[pullBoxSpec.x,.225,pullBoxChaseZ],[servicePanel.x,.225,serviceRiser.z],[servicePanel.x,servicePanel.y-servicePanel.h/2,serviceRiser.z]]}
 ];
 for(const connection of serviceConnectionRoutes){
  const start=objects.length;
@@ -945,27 +980,60 @@ walls.filter(w=>dataPocketWalls.has(w.id)).forEach(buildWall);
 function dataRoute(from,to,floor,points,extra={}){
  const clean=points.filter((p,i)=>!i||p.some((v,j)=>Math.abs(v-points[i-1][j])>.00001));
  const name=`Data conduit · ${from.code} → ${to.code}`;
- const mesh=part(new THREE.TubeGeometry(roundedPipe(clean,.06),Math.max(24,(clean.length-1)*16),dataLines.conduitRadius,10,false),dataConduitMat,'data',floor,[0,0,0],name,'User description',conduitNote(false)+`Connects ${from.mesh.userData.name} to ${to.mesh.userData.name}. ${extra.via?'Rises through the KT-SI conduit passthrough channel. ':''}`+dataNote,false);
+ const mesh=part(new THREE.TubeGeometry(roundedPipe(clean,.10),Math.max(24,(clean.length-1)*16),dataLines.conduitRadius,10,false),dataConduitMat,'data',floor,[0,0,0],name,'User description',conduitNote(false)+`Connects ${from.mesh.userData.name} to ${to.mesh.userData.name}. ${extra.via?'Rises through the KT-SI conduit passthrough channel. ':''}`+dataNote,false);
  const record={from:from.id,to:to.id,floor,points:clean,...conduitInfo(false),...extra};
  Object.assign(mesh.userData,{dataConduit:true,routePoints:clean,...record});dataLines.routes.push(record);
 }
 const dataFloorLevel=f=>floorChase.finishedLevels[f]-floorChase.centerDepth;
 const dataFloorTap=b=>[b.wallPoint[0]+b.normal[0]*floorChase.wallOffset,dataFloorLevel(b.floor),b.wallPoint[2]+b.normal[1]*floorChase.wallOffset];
-const dataWallFoot=b=>[b.wallPoint[0],dataFloorLevel(b.floor),b.wallPoint[2]];
-const dataDrop=b=>[b.point,b.wallPoint,dataWallFoot(b),dataFloorTap(b)];
-const dataRise=b=>dataDrop(b).reverse();
 dataRoute(dataLRExterior,dataLRFar,0,[dataLRExterior.point,dataLRExterior.wallPoint,dataLRFar.point],{ingress:true});
-dataRoute(dataLRNear,dataLREast,0,[...dataDrop(dataLRNear),...dataRise(dataLREast)],{routingMode:'floor-chase'});
-// LR-EI and GR-WI share one physical partition: keep this channel beside it.
-const guestWallTap=[dataFloorTap(dataLREast)[0],dataFloorLevel(0),dataGuest.wallPoint[2]];
-dataRoute(dataLREast,dataGuest,0,[...dataDrop(dataLREast),guestWallTap,dataWallFoot(dataGuest),dataGuest.wallPoint,dataGuest.point],{routingMode:'floor-chase',wallSideRun:true});
-const dataPass=[2.55,3.10,bathroomPartition.a[1]];
-dataRoute(dataGuest,dataMasterHub,0,[...dataDrop(dataGuest),[dataFloorTap(dataGuest)[0],dataFloorLevel(0),dataPass[2]],[dataPass[0],dataFloorLevel(0),dataPass[2]],dataPass],{via:dataLines.via,part:'lower'});
-dataRoute(dataGuest,dataMasterHub,1,[dataPass,[dataPass[0],dataFloorLevel(1),dataPass[2]],...dataRise(dataMasterHub)],{via:dataLines.via,part:'upper'});
-dataRoute(dataMasterHub,dataMasterEast,1,[...dataDrop(dataMasterHub),...dataRise(dataMasterEast)],{routingMode:'floor-chase',branch:true});
-// Cross the partition at the hub, then follow its R1 side to the bedroom box.
-const r1HubTap=[dataFloorTap(dataBedroom)[0],dataFloorLevel(1),dataMasterHub.wallPoint[2]];
-dataRoute(dataMasterHub,dataBedroom,1,[...dataDrop(dataMasterHub),r1HubTap,...dataRise(dataBedroom)],{routingMode:'floor-chase',branch:true,wallSideRun:true});
+// Each run between utility boxes is its own conduit with a GI pull wire, so
+// runs never share a conduit or tee. Conduits meeting one box enter it side
+// by side, 30 mm apart along the wall.
+const dataRuns=[[dataLRNear,dataLREast],[dataLREast,dataGuest],[dataGuest,dataMasterHub],[dataMasterHub,dataMasterEast],[dataMasterHub,dataBedroom]];
+const dataPorts=new Map();
+for(const run of dataRuns)for(const b of run)dataPorts.set(b.id,{count:(dataPorts.get(b.id)?.count??0)+1,next:0});
+function dataPort(b){
+ const port=dataPorts.get(b.id),offset=(port.next++-(port.count-1)/2)*.03,along=[Math.abs(b.normal[1]),Math.abs(b.normal[0])];
+ const shift=p=>[p[0]+along[0]*offset,p[1],p[2]+along[1]*offset];
+ const chase=[b.wallPoint[0]+b.normal[0]*wallChaseOffset,b.wallPoint[2]+b.normal[1]*wallChaseOffset];
+ return {bottom:shift([chase[0],b.point[1]-dataLines.boxHeight/2,chase[1]]),foot:shift([chase[0],dataFloorLevel(b.floor),chase[1]]),tap:shift(dataFloorTap(b))};
+}
+// Conduits enter each box from below: straight down the wall chase, then one bend.
+const dataBottom=b=>b.bottom;
+const dataDown=b=>[dataBottom(b),b.foot],dataUp=b=>[b.foot,dataBottom(b)];
+// Floor run beside a partition on the x=channelX line, joining and leaving it at 45°.
+function dataWallSideRun(from,to,channelX){
+ const sign=Math.sign(to[2]-from[2])||1;
+ return [from,[channelX,from[1],from[2]+sign*Math.abs(channelX-from[0])],[channelX,to[1],to[2]-sign*Math.abs(channelX-to[0])],to];
+}
+// Data rises in the guest-face chase of GR-NI, continuing on the master face above.
+const dataPass=[2.55-wallChaseOffset,3.10,bathroomPartition.a[1]+wallChaseOffset];
+{
+ // Boxes in one room: straight floor run between the wall feet.
+ const near=dataPort(dataLRNear),east=dataPort(dataLREast);
+ dataRoute(dataLRNear,dataLREast,0,[...dataDown(near),...dataUp(east)],{routingMode:'floor-chase'});
+}
+{
+ // LR-EI and GR-WI share one physical partition: keep this channel beside it.
+ const east=dataPort(dataLREast),guest=dataPort(dataGuest);
+ dataRoute(dataLREast,dataGuest,0,[dataBottom(east),...dataWallSideRun(east.foot,guest.foot,east.tap[0]),dataBottom(guest)],{routingMode:'floor-chase',wallSideRun:true});
+}
+{
+ // Up the KT-SI passthrough, then beside the master side of the partition to the hub.
+ const guest=dataPort(dataGuest),hub=dataPort(dataMasterHub);
+ dataRoute(dataGuest,dataMasterHub,0,[dataBottom(guest),...dataWallSideRun(guest.foot,[dataPass[0],dataFloorLevel(0),dataPass[2]],guest.tap[0]),dataPass],{via:dataLines.via,part:'lower'});
+ dataRoute(dataGuest,dataMasterHub,1,[dataPass,...dataWallSideRun([dataPass[0],dataFloorLevel(1),dataPass[2]],hub.foot,hub.tap[0]),dataBottom(hub)],{via:dataLines.via,part:'upper'});
+}
+{
+ const hub=dataPort(dataMasterHub),east=dataPort(dataMasterEast);
+ dataRoute(dataMasterHub,dataMasterEast,1,[...dataDown(hub),...dataUp(east)],{routingMode:'floor-chase',branch:true});
+}
+{
+ // Pass under the partition below the hub, then follow its R1 side to the bedroom box.
+ const hub=dataPort(dataMasterHub),bedroom=dataPort(dataBedroom);
+ dataRoute(dataMasterHub,dataBedroom,1,[dataBottom(hub),...dataWallSideRun(hub.foot,bedroom.foot,bedroom.tap[0]),dataBottom(bedroom)],{routingMode:'floor-chase',branch:true,wallSideRun:true});
+}
 
 // P-1: water along right side; soil / drainage along left, with rear wet rooms.
 const pNote='Buried depths and exact concealed bends remain approximate. Diameters are visually enlarged.';
@@ -1027,7 +1095,7 @@ const drainMat=material(0xbfb889),drainDetail='Carport downpipe: offset beneath 
 // Rounded corner curve preserves straight runs between the elbow tangencies.
 function roundedPipe(points,radius=.10){
  const vectors=points.map(p=>new THREE.Vector3(...p)),path=new THREE.CurvePath();let current=vectors[0];
- for(let i=1;i<vectors.length-1;i++){const p=vectors[i],a=vectors[i-1],b=vectors[i+1],r=Math.min(radius,p.distanceTo(a)/3,p.distanceTo(b)/3),before=p.clone().add(a.clone().sub(p).normalize().multiplyScalar(r)),after=p.clone().add(b.clone().sub(p).normalize().multiplyScalar(r));path.add(new THREE.LineCurve3(current,before));path.add(new THREE.QuadraticBezierCurve3(before,p,after));current=after;}
+ for(let i=1;i<vectors.length-1;i++){const p=vectors[i],a=vectors[i-1],b=vectors[i+1],r=Math.min(radius,p.distanceTo(a)*(i===1?.9:.45),p.distanceTo(b)*(i===vectors.length-2?.9:.45)),before=p.clone().add(a.clone().sub(p).normalize().multiplyScalar(r)),after=p.clone().add(b.clone().sub(p).normalize().multiplyScalar(r));path.add(new THREE.LineCurve3(current,before));path.add(new THREE.QuadraticBezierCurve3(before,p,after));current=after;}
  path.add(new THREE.LineCurve3(current,vectors.at(-1)));return path;
 }
 // Viewed from the service area toward B1-EE, the right corner is north.
@@ -1539,5 +1607,5 @@ viewport.addEventListener('keydown',e=>{if(e.key==='Escape')clearSelection();});
 const modelContext=document.modelContext;
 if(modelContext?.registerTool){const lifecycle=new AbortController();const tool={name:'configure_building_view',title:'Configure the building view',description:'Show chosen building systems and select a floor in the visible 3D model.',inputSchema:{type:'object',properties:{systems:{type:'array',items:{type:'string',enum:defs.map(d=>d[0])},uniqueItems:true},floor:{type:'string',enum:['all','0','1']}},required:['systems'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input){if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['systems','floor'].includes(k))||!Array.isArray(input.systems)||input.systems.some(id=>!defs.some(d=>d[0]===id))||new Set(input.systems).size!==input.systems.length||(input.floor!==undefined&&!['all','0','1'].includes(input.floor)))throw new Error('Choose valid systems and floor.');for(const id in state.layers)state.layers[id]=input.systems.includes(id);if(input.floor!==undefined)state.level=input.floor;clearSelection();sync();return {visibleSystems:defs.filter(d=>state.layers[d[0]]).map(d=>d[0]),floor:state.level};}};try{Promise.resolve(modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});}
 function resize(){const {width,height}=viewport.getBoundingClientRect();if(width<=0||height<=0)return;renderer.setSize(width,height,false);perspectiveCamera.aspect=width/height;perspectiveCamera.updateProjectionMatrix();const u=activeUnit(),bounds=state.scope==='block'?blockViewBounds():u;const span=Math.max(16,(bounds.depth+3),((bounds.width+3)/(width/height)));planCamera.left=-span*(width/height)/2;planCamera.right=-planCamera.left;planCamera.top=span/2;planCamera.bottom=-span/2;planCamera.updateProjectionMatrix();}new ResizeObserver(resize).observe(viewport);resize();setView('iso');sync();renderer.setAnimationLoop(()=>{controls.update();sizeSiteLabels();measurements.resize(camera,viewport.clientHeight,viewport.clientWidth);renderer.render(scene,camera);});
-window.townhouse={conduitSpec,kitchenSoffit,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
+window.townhouse={conduitSpec,ceilingPlans,kitchenSoffit,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();document.querySelector('#error').hidden=false;});

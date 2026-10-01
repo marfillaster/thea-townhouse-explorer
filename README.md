@@ -29,7 +29,7 @@ vercel --prod
 
 - `index.html`, `style.css`: page and styles
 - `app.js`: model geometry and UI
-- `*.mjs`: lots, block view, openings, wall surfaces, floors, conduits, measurements, selection outlines
+- `*.mjs`: lots, block view, openings, wall surfaces, floors, conduit planning (shared geometry, floor and ceiling), measurements, selection outlines
 - `tests/`: Node tests for the helpers
 
 ```sh
