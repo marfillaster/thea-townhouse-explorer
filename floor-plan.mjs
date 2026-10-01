@@ -71,8 +71,43 @@ export function exteriorChains(walls,faces,floor){
  return chains;
 }
 
-export function buildFloorPlan({walls,faces,openings,rooms,floor}){
- return {floor,walls:planWallSolids(walls,openings,floor),openings:planOpenings(walls,faces,openings,floor),rooms:planRooms(rooms,floor),chains:exteriorChains(walls,faces,floor)};
+export function buildFloorPlan({walls,faces,openings,rooms,fixtures=[],floor}){
+ return {floor,fixtures:fixtures.filter(f=>f.floor===floor),walls:planWallSolids(walls,openings,floor),openings:planOpenings(walls,faces,openings,floor),rooms:planRooms(rooms,floor),chains:exteriorChains(walls,faces,floor)};
+}
+
+// Plan styles live with the renderer so exported files carry them.
+export const planStyles=`.plan-caption{fill:#98a8ba;font-size:.2px}
+.plan-fixture{fill:#3a4a5c;stroke:#c3cdd8;stroke-width:1;vector-effect:non-scaling-stroke}
+.plan-sink{fill:#2a3a4c;stroke:#65bafa;stroke-width:1;vector-effect:non-scaling-stroke}
+.plan-step{fill:none;stroke:#98a8ba;stroke-width:1;stroke-dasharray:2 2;vector-effect:non-scaling-stroke}
+.fixture-label{fill:#c3cdd8;font-size:.11px;text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+.plan-title{fill:#e7eef5;font-size:.42px;font-weight:600;letter-spacing:.02em}
+.plan-wall{fill:#7d8c9c;stroke:none}
+.plan-room .room-fill polygon{fill:#1a2a3b;stroke:none;transition:fill .15s}
+.plan-room{cursor:pointer;outline:none}
+.plan-room:hover .room-fill polygon,.plan-room:focus-visible .room-fill polygon{fill:#22374b}
+.plan-room.selected .room-fill polygon{fill:#2a3a2c}
+.plan-room.selected .room-fill{outline:none}
+.room-overall{fill:none;stroke:#ffcc80;stroke-width:1;stroke-dasharray:4 3;vector-effect:non-scaling-stroke;opacity:.55;pointer-events:none}
+.room-label{text-anchor:middle;dominant-baseline:middle;pointer-events:none;paint-order:stroke;stroke:#0d1724;stroke-width:.05px}
+.room-name{fill:#e7eef5;font-size:.19px;font-weight:600}
+.room-size{fill:#acbaca;font-size:.12px}
+.plan-window{stroke:#73d5d5;stroke-width:1.2;vector-effect:non-scaling-stroke}
+.plan-door{stroke:#dfa886;stroke-width:1.5;vector-effect:non-scaling-stroke}
+.plan-swing{fill:none;stroke:#dfa886;stroke-width:1;stroke-dasharray:3 3;vector-effect:non-scaling-stroke;opacity:.7}
+.dim{pointer-events:none}
+.dim path{fill:none;stroke-width:1;vector-effect:non-scaling-stroke}
+.dim-ext{opacity:.45}
+.dim-overall path{stroke:#ffcc80}.dim-overall .dim-text{fill:#ffcc80}
+.dim-clear path{stroke:#76dfca}.dim-clear .dim-text{fill:#76dfca}
+.dim-wall path{stroke:#7d8c9c}
+.dim-total .dim-text{font-weight:600}
+.dim-text{font-size:.14px;text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:#0d1724;stroke-width:.04px;font-variant-numeric:tabular-nums}`;
+
+// Standalone SVG at 1:50 (1 m = 20 mm) with the plan's own styles.
+export function exportFloorPlanSvg({svg,viewBox},caption,scale=50){
+ const [x,y,w,h]=viewBox,mm=1000/scale;
+ return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(w*mm)}mm" height="${fmt(h*mm)}mm" viewBox="${[x,y,w,h].map(fmt).join(' ')}" font-family="Inter, system-ui, sans-serif"><style>${planStyles}</style><rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" fill="#0d1724"/>${svg.replace(/ (?:tabindex|role)="[^"]*"/g,'').replace(/plan-room selected/g,'plan-room')}<text class="plan-caption" x="${fmt(x+.4)}" y="${fmt(y+h-.4)}">${esc(caption)}</text></svg>`;
 }
 
 // SVG rendering. project maps canonical [x,z] to plan [x,y] in world metres,
@@ -88,20 +123,28 @@ export function renderFloorPlans(entries,project,mode='both'){
   const P=p=>{const [x,y]=project(p);return [x+dx,y];};
   layout.push({floor:plan.floor,x0:box.x0+dx,x1:box.x1+dx,y0:box.y0,y1:box.y1});
   const dims=[];
+  // Fixture zones cover a fixture, its clearance outline and its dimension rows.
+  const zones=plan.fixtures.map(f=>{const o=f.clearance?.outline;return {x0:Math.min(f.x0,o?.x0??f.x0)-.05,x1:Math.max(f.x1,o?.x1??f.x1)+.05,z0:Math.min(f.z0,o?.z0??f.z0)-.05,z1:Math.max(f.z1,o?.z1??f.z1)+.65};});
   parts.push(`<g class="plan-floor" data-floor="${plan.floor}">`);
   parts.push(`<text class="plan-title" x="${fmt(box.x0+dx)}" y="${fmt(box.y0-2.75)}">${esc(title)}</text>`);
   for(const room of plan.rooms){
    const polys=room.regions.map(g=>polygon([[g.x0,g.z0],[g.x1,g.z0],[g.x1,g.z1],[g.x0,g.z1]].map(P))).join('');
    parts.push(`<g class="plan-room" data-room="${room.code}" tabindex="0" role="button" aria-label="${esc(room.code+' '+room.name)}"><g class="room-fill">${polys}</g>`);
-   if(show.overall)parts.push(rect(room.overall,P,'room-overall'));
+   if(show.overall&&!(show.clear&&['x0','x1','z0','z1'].every(k=>Math.abs(room.overall[k]-room.clear[k])<EPS)))parts.push(rect(room.overall,P,'room-overall'));
    const big=room.regions.reduce((a,b)=>(b.x1-b.x0)*(b.z1-b.z0)>(a.x1-a.x0)*(a.z1-a.z0)?b:a);
    const [cx,cy]=P([(big.x0+big.x1)/2,(big.z0+big.z1)/2]);
    parts.push(`<text class="room-label" x="${fmt(cx)}" y="${fmt(cy)}"><tspan x="${fmt(cx)}" dy="-.09" class="room-name">${esc(room.code)}</tspan><tspan x="${fmt(cx)}" dy=".24" class="room-size">${room.area.toFixed(2)} m² clear</tspan></text></g>`);
    // Clear dimensions run along the north and east inner faces; overall
    // (centreline) dimensions along the south and west, over the walls.
    const c=room.clear,o=room.overall,inset=.3;
-   if(show.clear)dims.push(dimension([c.x0,c.z0+inset],[c.x1,c.z0+inset],[0,1],0,P,'dim-clear',false),dimension([c.x1-inset,c.z0],[c.x1-inset,c.z1],[-1,0],0,P,'dim-clear',false));
-   if(show.overall)dims.push(dimension([o.x0,c.z1-inset],[o.x1,c.z1-inset],[0,-1],0,P,'dim-overall',false),dimension([c.x0+inset,o.z0],[c.x0+inset,o.z1],[1,0],0,P,'dim-overall',false));
+   // Step a room dimension line clear of any fixture zone it would cross.
+   const clearOf=(value,axis,dir,lo,hi)=>{for(const z of zones)if(value>z[axis+'0']-EPS&&value<z[axis+'1']+EPS&&lo<z[(axis==='x'?'z':'x')+'1']&&hi>z[(axis==='x'?'z':'x')+'0'])value=dir>0?z[axis+'1']+.3:z[axis+'0']-.3;return value;};
+   const north=clearOf(c.z0+inset,'z',1,c.x0,c.x1),south=clearOf(c.z1-inset,'z',-1,c.x0,c.x1),east=clearOf(c.x1-inset,'x',-1,c.z0,c.z1),west=clearOf(c.x0+inset,'x',1,c.z0,c.z1);
+   if(show.clear)dims.push(dimension([c.x0,north],[c.x1,north],[0,1],0,P,'dim-clear',false),dimension([east,c.z0],[east,c.z1],[-1,0],0,P,'dim-clear',false));
+   // Skip an overall dimension that repeats the clear one (no bounding walls).
+   const same=(a0,a1,b0,b1)=>show.clear&&Math.abs(a0-b0)<EPS&&Math.abs(a1-b1)<EPS;
+   if(show.overall&&!same(o.x0,o.x1,c.x0,c.x1))dims.push(dimension([o.x0,south],[o.x1,south],[0,-1],0,P,'dim-overall',false));
+   if(show.overall&&!same(o.z0,o.z1,c.z0,c.z1))dims.push(dimension([west,o.z0],[west,o.z1],[1,0],0,P,'dim-overall',false));
   }
   for(const w of plan.walls)parts.push(rect(w,P,'plan-wall'));
   for(const o of plan.openings){
@@ -115,15 +158,36 @@ export function renderFloorPlans(entries,project,mode='both'){
     parts.push(line(hinge,leaf,P,'plan-door'),`<polyline class="plan-swing" points="${arc.map(p=>p.map(fmt).join(',')).join(' ')}"/>`);
    }
   }
+  // Fixtures: a counter (with sink) and the outline it keeps clear of. Clear
+  // dimensions start at the wall face it stands on; overall ones at the wall
+  // centreline. Length and the clearance gap share a row along the front edge.
+  for(const f of plan.fixtures){
+   parts.push(rect(f,P,'plan-fixture'));
+   if(f.sink)parts.push(rect(f.sink,P,'plan-sink'));
+   if(f.clearance?.outline){const o=f.clearance.outline;parts.push(rect(o,P,'plan-step'));const [tx,ty]=P([(o.x0+o.x1)/2,(o.z0+o.z1)/2]);parts.push(`<text class="fixture-label" x="${fmt(tx)}" y="${fmt(ty)}">${esc(f.clearance.label)}</text>`);}
+   const [lx,ly]=P([(f.x0+f.x1)/2,(f.z0+f.z1)/2]);parts.push(`<text class="fixture-label" x="${fmt(lx)}" y="${fmt(ly)}">${esc(f.label)}</text>`);
+   const overall={x0:f.x0-(f.walls?.x0?HALF:0),z0:f.z0-(f.walls?.z0?HALF:0)},rows=[];
+   if(show.clear)rows.push({cls:'dim-clear',x0:f.x0,z0:f.z0,gap:true});
+   if(show.overall&&!(show.clear&&overall.x0===f.x0&&overall.z0===f.z0))rows.push({cls:'dim-overall',...overall});
+   rows.forEach((row,k)=>{
+    const z=f.z1+.18+k*.3,x=f.x1+.12+k*.2;
+    dims.push(dimension([row.x0,z],[f.x1,z],[0,1],0,P,row.cls,false));
+    if(row.gap&&f.clearance)dims.push(dimension([f.x1,z],[f.clearance.x1,z],[0,1],0,P,row.cls,false));
+    dims.push(dimension([x,row.z0],[x,f.z1],[1,0],0,P,row.cls,false));
+   });
+  }
   parts.push(`<g class="room-dims">${dims.join('')}</g>`);
   // Exterior chains: rows step outward; the clear row sits nearest the walls.
   for(const chain of plan.chains){
    const out=chain.axis==='z'?[0,chain.sign]:[chain.sign,0],rows=[];
    if(show.clear)rows.push({segments:chain.clear,cls:'dim-clear'});
-   if(show.overall&&chain.overall.length>1)rows.push({segments:chain.overall,cls:'dim-overall'});
+   if(show.overall)rows.push({segments:chain.overall,cls:'dim-overall'});
    if(show.clear)rows.push({segments:[chain.total.clear],cls:'dim-clear dim-total'});
    if(show.overall)rows.push({segments:[chain.total.overall],cls:'dim-overall dim-total'});
-   rows.forEach((row,k)=>{
+   // Drop a row that repeats the labels of a nearer row, e.g. a total equal
+   // to a chain's only clear span.
+   const seen=new Set(),labelled=rows.filter(row=>{const key=row.cls.split(' ')[0]+':'+row.segments.filter(s=>!s.wall).map(s=>formatMetres(s.b-s.a)).join(',');if(seen.has(key))return false;seen.add(key);return true;});
+   labelled.forEach((row,k)=>{
     const offset=.55+k*.5;
     for(const s of row.segments){
      const at=(t)=>chain.axis==='z'?[t,chain.edge]:[chain.edge,t];

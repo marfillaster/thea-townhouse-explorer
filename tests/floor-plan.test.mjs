@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { walls, reviewedOpenings } from '../openings.mjs';
 import { buildWallSurfaces } from '../wall-surfaces.mjs';
 import { buildRoomFloorPlans } from '../room-floors.mjs';
-import { exteriorChains, planWallSolids, planOpenings, buildFloorPlan, renderFloorPlans } from '../floor-plan.mjs';
+import { exteriorChains, planWallSolids, planOpenings, buildFloorPlan, renderFloorPlans, exportFloorPlanSvg } from '../floor-plan.mjs';
 const close=(a,b)=>assert.ok(Math.abs(a-b)<1e-6,`${a} ≠ ${b}`);
 const faces=buildWallSurfaces(walls),sum=s=>s.reduce((t,x)=>t+x.b-x.a,0);
 const chain=(floor,side)=>exteriorChains(walls,faces,floor).find(c=>c.side===side);
@@ -47,4 +47,13 @@ test('rooms report clear regions and centreline bounds',()=>{
  close(mb.clear.x1-mb.clear.x0,2.4);close(mb.overall.x1-mb.overall.x0,2.55);close(mb.area,2.4*4.45);
  const {svg}=renderFloorPlans([{title:'Second floor',plan}],p=>p,'clear');
  assert.match(svg,/data-room="MB"/);assert.doesNotMatch(svg,/dim-overall/);
+});
+test('rows that repeat a nearer row are dropped, and export is standalone',()=>{
+ const plan=buildFloorPlan({walls,faces,openings:reviewedOpenings,rooms:[],floor:0});
+ const rendered=renderFloorPlans([{title:'Ground floor',plan}],p=>p,'both');
+ const labels=[...rendered.svg.matchAll(/<g class="dim (dim-\w+)[^"]*">(?:(?!<\/g>)[^])*?<text[^>]*>([\d.]+)<\/text>/g)].map(m=>m[1]+m[2]);
+ // South: the lone 2.35 clear span is the clear total; the 2.65 chain is the overall total.
+ assert.equal(labels.filter(l=>l==='dim-clear2.35').length,1);assert.equal(labels.filter(l=>l==='dim-overall2.65').length,1);
+ const svg=exportFloorPlanSvg(rendered,'Unit 4');
+ assert.match(svg,/^<\?xml[^]*<svg xmlns="http:\/\/www.w3.org\/2000\/svg" width="[\d.]+mm"/);assert.match(svg,/<style>[^<]*\.plan-wall/);
 });

@@ -9,7 +9,7 @@ import { roomNames,buildWallSurfaces,buildWallExtensions,surfaceCodes } from './
 import { buildRoomFloorPlans, roomAtPoint, wallFootprint } from './room-floors.mjs';
 import { loopSegments, regionBoundary } from './selection-outlines.mjs';
 import { createMeasurements, surfaceDimensions, transformDimensions, rectangularRegions, regionProjection } from './measurements.mjs';
-import { buildFloorPlan, renderFloorPlans, formatMetres } from './floor-plan.mjs?v=floor-plan-6';
+import { buildFloorPlan, renderFloorPlans, formatMetres, planStyles, exportFloorPlanSvg } from './floor-plan.mjs?v=plan-counter-2';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 const viewport=document.querySelector('#viewport');
 const sidebarToggle=document.querySelector('#sidebar-toggle'),sidebar=document.querySelector('#sidebar');
@@ -223,7 +223,7 @@ objects.find(m=>m.userData.stairUpperLanding).userData.measurementKind='floor';
 // Counter outline makes the reported 500 mm horizontal clearance reviewable.
 // Its remaining dimensions and sink offset are estimates within the kitchen.
 const kitchenCounter={startX:2.125,endX:stair.bottomStartX-stair.counterGap,rearZ:-3.75,frontZ:-3.15,top:1.10,thickness:.055};
-kitchenCounter.width=kitchenCounter.endX-kitchenCounter.startX;kitchenCounter.sinkX=kitchenCounter.endX-.425;
+kitchenCounter.width=kitchenCounter.endX-kitchenCounter.startX;kitchenCounter.sinkX=kitchenCounter.endX-.425;kitchenCounter.sink={z:-3.5,width:.65,depth:.5};
 const counterDetail='Counter edge is 500 mm from the nearest bottom-step edge, as supplied by you. Counter depth, height, supports and sink offset remain approximate.';
 box('structure',0,(kitchenCounter.startX+kitchenCounter.endX)/2,kitchenCounter.top-kitchenCounter.thickness/2,(kitchenCounter.rearZ+kitchenCounter.frontZ)/2,kitchenCounter.width,kitchenCounter.thickness,kitchenCounter.frontZ-kitchenCounter.rearZ,mats.concrete,'Kitchen counter · 500 mm stair clearance','IMG_5151 · A-4',counterDetail).userData.kitchenCounter=true;
 for(const x of [kitchenCounter.startX+.02,kitchenCounter.endX-.02])box('structure',0,x,(.25+kitchenCounter.top-kitchenCounter.thickness)/2,(kitchenCounter.rearZ+kitchenCounter.frontZ)/2,.04,kitchenCounter.top-kitchenCounter.thickness-.25,kitchenCounter.frontZ-kitchenCounter.rearZ,mats.concrete,'Kitchen counter support · approximate','IMG_5151 · A-4',counterDetail);
@@ -1072,7 +1072,7 @@ for(const[f,x,z]of [[0,.45,-1.9],[1,2.5,-3.5]]){
  sanitaryRoute(f,'Soil branch · 100 mm nominal',[[tx,y+.1,z],[tx,branchY,z],collector,[collectorX,branchY,sanitaryStack.z],junction],.075,{bathroomSoil:true});
  for(const [fixtureX,height]of [[tx,.55],[tx+.55,.70]])freshWater(f,'Bathroom fixture supply',[[waterRiser.x,supplyY,wallZ],[fixtureX,supplyY,wallZ],[fixtureX,supplyY,z],[fixtureX,y+height,z]]);
 }
-box('plumbing',0,kitchenCounter.sinkX,1.05,-3.5,.65,.16,.5,fixtureMat,'Kitchen sink','A-4 · P-1','Sink contained within the approximate counter footprint used to show the reported 500 mm stair clearance. Sink profile and exact center offset are approximate.');
+box('plumbing',0,kitchenCounter.sinkX,1.05,kitchenCounter.sink.z,kitchenCounter.sink.width,.16,kitchenCounter.sink.depth,fixtureMat,'Kitchen sink','A-4 · P-1','Sink contained within the approximate counter footprint used to show the reported 500 mm stair clearance. Sink profile and exact center offset are approximate.');
 route('plumbing',0,[[kitchenCounter.sinkX,.98,-3.5],[kitchenCounter.sinkX,-.1,-3.5],[1.95,-.1,-2.2],[1.95,-.42,2.3]],.06,wasteMat,'Kitchen waste / soil main','P-1',pNote);
 route('plumbing',0,[[1.95,-.2,-2.2],[1.95,3.025,-2.2]],.075,wasteMat,'Soil stack · lower','P-1',pNote);
 const soilExitWall=walls.find(w=>w.id==='g-bath-rear');
@@ -1613,6 +1613,11 @@ viewport.addEventListener('keydown',e=>{if(e.key==='Escape')clearSelection();});
 // (centrelines and outer faces); clear dimensions run between wall faces.
 const planView=document.querySelector('#plan-view'),planSvg=document.querySelector('#plan-svg'),planToggle=document.querySelector('#plan-toggle');
 const planCamera2d={box:null,fit:null,key:''};
+// The counter stands on the kitchen service and rear wall faces; its free end
+// keeps 500 mm clear of the first stair step.
+const planFixtures=[{floor:0,label:'Counter',x0:kitchenCounter.startX,x1:kitchenCounter.endX,z0:kitchenCounter.rearZ,z1:kitchenCounter.frontZ,walls:{x0:true,z0:true},
+ sink:{x0:kitchenCounter.sinkX-kitchenCounter.sink.width/2,x1:kitchenCounter.sinkX+kitchenCounter.sink.width/2,z0:kitchenCounter.sink.z-kitchenCounter.sink.depth/2,z1:kitchenCounter.sink.z+kitchenCounter.sink.depth/2},
+ clearance:{x1:stair.bottomStartX,label:'Stair',outline:{x0:stair.bottomStartX,x1:stair.bottomStartX+stair.bottomGoing,z0:stair.turn.z-stair.width/2,z1:stair.turn.z+stair.width/2}}}];
 function planRooms(){
  const surfaces=objects.filter(m=>m.userData.measurementKind==='floor').map(floorSurfaceBounds);
  const rooms=buildRoomFloorPlans(walls,wallBaseSurfaces,surfaces).map(r=>({...r,name:roomNames[r.code]}));
@@ -1627,8 +1632,9 @@ function renderPlan(){
  const project=([x,z])=>{const p=root.localToWorld(new THREE.Vector3(x,0,z));return [p.x,p.z];};
  const openings=reviewedOpenings.filter(o=>u.end||!['guest-side','master-side'].includes(o.id)),rooms=planRooms();
  const floors=state.level==='all'?[0,1]:[Number(state.level)];
- const {svg,viewBox}=renderFloorPlans(floors.map(f=>({title:f?'Second floor':'Ground floor',plan:buildFloorPlan({walls,faces:wallBaseSurfaces,openings,rooms,floor:f})})),project,state.planMode);
- planSvg.innerHTML=svg;
+ const rendered=renderFloorPlans(floors.map(f=>({title:f?'Second floor':'Ground floor',plan:buildFloorPlan({walls,faces:wallBaseSurfaces,openings,rooms,fixtures:planFixtures,floor:f})})),project,state.planMode);
+ const {svg,viewBox}=rendered;planCamera2d.rendered=rendered;
+ planSvg.innerHTML=`<style>${planStyles}</style>`+svg;
  const key=`${u.id}:${state.level}:${u.width}:${u.depth}`;
  if(planCamera2d.key!==key){planCamera2d.key=key;planCamera2d.fit=viewBox;planCamera2d.box=null;}
  planCamera2d.fit=viewBox;applyPlanBox();
@@ -1650,17 +1656,36 @@ function zoomPlan(factor,at){
  const k=nw/w;planCamera2d.box=[px-(px-x)*k,py-(py-y)*k,w*k,h*k];planSvg.setAttribute('viewBox',planCamera2d.box.join(' '));
 }
 planSvg.addEventListener('wheel',e=>{e.preventDefault();zoomPlan(Math.exp(e.deltaY*.0015),planPoint(e));},{passive:false});
-let planDrag=null;
-planSvg.addEventListener('pointerdown',e=>{if(e.button!==0)return;planDrag={x:e.clientX,y:e.clientY,box:[...planCamera2d.box],moved:false};planSvg.setPointerCapture(e.pointerId);});
+// One pointer pans; two pointers pinch-zoom about their midpoint. A tap that
+// never moved selects the room under it.
+const planPointers=new Map();let planGesture=null;
+function startPlanGesture(){
+ const points=[...planPointers.values()],rect=planSvg.getBoundingClientRect(),[x,y,w,h]=planCamera2d.box;
+ const mid=[points.reduce((s,p)=>s+p.x,0)/points.length,points.reduce((s,p)=>s+p.y,0)/points.length];
+ planGesture={rect,box:[x,y,w,h],mid,anchor:[x+(mid[0]-rect.left)/rect.width*w,y+(mid[1]-rect.top)/rect.height*h],distance:points.length>1?Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y):0,moved:planGesture?.moved||points.length>1};
+}
+planSvg.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button!==0)return;planPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});try{planSvg.setPointerCapture(e.pointerId);}catch{}if(planPointers.size===1)planGesture=null;startPlanGesture();});
 planSvg.addEventListener('pointermove',e=>{
- if(!planDrag)return;const rect=planSvg.getBoundingClientRect(),dx=e.clientX-planDrag.x,dy=e.clientY-planDrag.y;
- if(Math.hypot(dx,dy)>4)planDrag.moved=true;if(!planDrag.moved)return;
- const [x,y,w,h]=planDrag.box;planCamera2d.box=[x-dx/rect.width*w,y-dy/rect.height*h,w,h];planSvg.setAttribute('viewBox',planCamera2d.box.join(' '));planSvg.classList.add('dragging');
+ if(!planPointers.has(e.pointerId)||!planGesture)return;planPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+ const points=[...planPointers.values()].slice(0,2),{rect,box:[,,w,h],anchor,distance}=planGesture;
+ const mid=[points.reduce((s,p)=>s+p.x,0)/points.length,points.reduce((s,p)=>s+p.y,0)/points.length];
+ if(!planGesture.moved&&Math.hypot(mid[0]-planGesture.mid[0],mid[1]-planGesture.mid[1])<=4)return;planGesture.moved=true;
+ const fit=planCamera2d.fit,current=points.length>1?Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y):0;
+ const k=points.length>1&&distance>0&&current>0?Math.min(Math.max(distance/current,2/w),Math.max(fit[2],fit[3])*4/w):1;
+ // Keep the plan point first under the fingers beneath their current midpoint.
+ const nw=w*k,nh=h*k;planCamera2d.box=[anchor[0]-(mid[0]-rect.left)/rect.width*nw,anchor[1]-(mid[1]-rect.top)/rect.height*nh,nw,nh];
+ planSvg.setAttribute('viewBox',planCamera2d.box.join(' '));planSvg.classList.add('dragging');
 });
-planSvg.addEventListener('pointerup',e=>{
- const drag=planDrag;planDrag=null;planSvg.classList.remove('dragging');if(!drag||drag.moved)return;
- const room=e.target.closest?.('[data-room]');selectPlanRoom(room?.dataset.room??null,room?.closest('[data-floor]')?.dataset.floor);
-});
+function endPlanPointer(e){
+ if(!planPointers.delete(e.pointerId))return;
+ const gesture=planGesture;
+ if(planPointers.size){startPlanGesture();return;}
+ planGesture=null;planSvg.classList.remove('dragging');
+ if(e.type!=='pointerup'||!gesture||gesture.moved)return;
+ // Pointer capture retargets the event to the SVG, so hit-test the tap point.
+ const room=document.elementFromPoint(e.clientX,e.clientY)?.closest?.('#plan-svg [data-room]');selectPlanRoom(room?.dataset.room??null,room?.closest('[data-floor]')?.dataset.floor);
+}
+planSvg.addEventListener('pointerup',endPlanPointer);planSvg.addEventListener('pointercancel',endPlanPointer);
 planSvg.addEventListener('keydown',e=>{const room=e.target.closest?.('[data-room]');if(room&&(e.key==='Enter'||e.key===' ')){e.preventDefault();selectPlanRoom(room.dataset.room,room.closest('[data-floor]').dataset.floor);}if(e.key==='Escape')selectPlanRoom(null);});
 function selectPlanRoom(code,floor){
  planSvg.querySelectorAll('.plan-room.selected').forEach(el=>el.classList.remove('selected'));
@@ -1679,6 +1704,12 @@ function selectPlanRoom(code,floor){
 }
 planToggle.onclick=()=>{state.plan=!state.plan;planCamera2d.room=null;clearSelection();sync();if(state.plan){planCamera2d.box=null;applyPlanBox();planSvg.focus();}};
 document.querySelectorAll('[data-plan-mode]').forEach(el=>el.onclick=()=>{state.planMode=el.dataset.planMode;sync();});
+document.querySelector('#plan-export').onclick=()=>{
+ const u=activeUnit(),floors=state.level==='all'?'Ground and second floor':state.level==='0'?'Ground floor':'Second floor';
+ const caption=`Thea · Unit ${u.id} · ${floors} · ${({overall:'Including walls (centrelines, outer faces)',clear:'Clear of walls (wall faces)',both:'Including walls and clear of walls'})[state.planMode]} · 1:50 · metres`;
+ const url=URL.createObjectURL(new Blob([exportFloorPlanSvg(planCamera2d.rendered,caption)],{type:'image/svg+xml'})),link=document.createElement('a');
+ link.href=url;link.download=`thea-unit-${u.id}-${state.level==='all'?'plan':state.level==='0'?'ground':'second'}-${state.planMode}.svg`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 document.querySelector('#plan-fit').onclick=()=>{planCamera2d.box=null;applyPlanBox();};
 document.querySelector('#plan-zoom-in').onclick=()=>zoomPlan(1/1.3);
 document.querySelector('#plan-zoom-out').onclick=()=>zoomPlan(1.3);

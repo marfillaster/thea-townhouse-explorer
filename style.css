@@ -108,32 +108,11 @@ main.sidebar-collapsed #workspace{width:100%}
 .plan-toolbar .segments button{padding:7px 10px;white-space:nowrap}
 .plan-zoom{display:flex;gap:3px;padding:3px;border:1px solid var(--border);border-radius:6px;background:#162330ec}
 .plan-zoom button{border:0;padding:6px 10px;font-size:12px}
+#plan-export{background:#162330ec;font-size:12px;padding:7px 10px;white-space:nowrap}
 .plan-legend{position:absolute;left:18px;bottom:14px;display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;color:var(--muted);pointer-events:none}
 .plan-legend span{display:flex;align-items:center;gap:6px}
 .plan-legend i{display:inline-block;width:18px;height:2px}
 .key-overall{background:#ffcc80}.key-clear{background:#76dfca}.key-wall{background:#7d8c9c;height:6px!important}
 #plan-toggle.active{background:#354657;color:var(--mint)}
 #plan-toggle:disabled{opacity:.4}
-.plan-title{fill:#e7eef5;font-size:.42px;font-weight:600;letter-spacing:.02em}
-.plan-wall{fill:#7d8c9c;stroke:none}
-.plan-room .room-fill polygon{fill:#1a2a3b;stroke:none;transition:fill .15s}
-.plan-room{cursor:pointer;outline:none}
-.plan-room:hover .room-fill polygon,.plan-room:focus-visible .room-fill polygon{fill:#22374b}
-.plan-room.selected .room-fill polygon{fill:#2a3a2c}
-.plan-room.selected .room-fill{outline:none}
-.room-overall{fill:none;stroke:#ffcc80;stroke-width:1;stroke-dasharray:4 3;vector-effect:non-scaling-stroke;opacity:.55;pointer-events:none}
-.room-label{text-anchor:middle;dominant-baseline:middle;pointer-events:none;paint-order:stroke;stroke:#0d1724;stroke-width:.05px}
-.room-name{fill:#e7eef5;font-size:.19px;font-weight:600}
-.room-size{fill:#acbaca;font-size:.12px}
-.plan-window{stroke:#73d5d5;stroke-width:1.2;vector-effect:non-scaling-stroke}
-.plan-door{stroke:#dfa886;stroke-width:1.5;vector-effect:non-scaling-stroke}
-.plan-swing{fill:none;stroke:#dfa886;stroke-width:1;stroke-dasharray:3 3;vector-effect:non-scaling-stroke;opacity:.7}
-.dim{pointer-events:none}
-.dim path{fill:none;stroke-width:1;vector-effect:non-scaling-stroke}
-.dim-ext{opacity:.45}
-.dim-overall path{stroke:#ffcc80}.dim-overall .dim-text{fill:#ffcc80}
-.dim-clear path{stroke:#76dfca}.dim-clear .dim-text{fill:#76dfca}
-.dim-wall path{stroke:#7d8c9c}
-.dim-total .dim-text{font-weight:600}
-.dim-text{font-size:.14px;text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:#0d1724;stroke-width:.04px;font-variant-numeric:tabular-nums}
 @media(max-width:700px){.plan-toolbar{top:62px;right:10px;left:10px;justify-content:space-between}.plan-legend{left:10px;bottom:8px;font-size:10px}.header-actions #plan-toggle span{display:none}}
