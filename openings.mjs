@@ -42,16 +42,21 @@ export const walls = [
  {id:'u-bedroom-entry',floor:1,a:[2.55,-.725],b:[5.05,-.725],bottom:3.1,top:5.85,name:'Bedroom 1 landing wall'}
 ];
 // at = distance from wall.a along the wall. Doors are modeled CLOSED in the
-// actual wall gap, not at the swung-open leaf shown in the plan.
+// actual wall gap, not at the swung-open leaf shown in the plan. In the 2D
+// plan, swing:'out' opens a door away from the room it serves and hinge:'end'
+// hinges it on the jamb farther from wall.a. The kitchen service door opens
+// outward, hinged on the bathroom side; the balcony door hinges on the party
+// wall side, the upper bathroom door on the stairwell wall side and the ground
+// bathroom door on the guest room wall side.
 export const openingPlacements = [
  {id:'main-entry',code:'D1',wall:'g-front',at:.50,name:'Main entrance'},
- {id:'service-door',code:'D2',wall:'g-service',at:1.10,name:'Service door'},
+ {id:'service-door',code:'D2',wall:'g-service',at:1.10,name:'Service door',swing:'out',hinge:'end'},
  {id:'guest-door',code:'D3',wall:'g-divider',at:.50,name:'Guest bedroom door'},
- {id:'ground-bath-door',code:'D4',wall:'g-bath-door',at:.75,name:'Ground bathroom door'},
- {id:'balcony-door',code:'D2',wall:'u-balcony',at:2.05,name:'Balcony door'},
+ {id:'ground-bath-door',code:'D4',wall:'g-bath-door',at:.75,name:'Ground bathroom door',hinge:'end'},
+ {id:'balcony-door',code:'D2',wall:'u-balcony',at:2.05,name:'Balcony door',hinge:'end'},
  {id:'master-door',code:'D3',wall:'u-divider',at:.50,name:'Master bedroom entry'},
  {id:'bedroom-door',code:'D3',wall:'u-bedroom-entry',at:.50,name:'Bedroom 1 entry'},
- {id:'upper-bath-door',code:'D4',wall:'u-bath-south',at:1.60,name:'Upper bathroom door'},
+ {id:'upper-bath-door',code:'D4',wall:'u-bath-south',at:1.60,name:'Upper bathroom door',hinge:'end'},
  {id:'guest-front',code:'W1a',wall:'g-guest-front',at:1.275,name:'Guest room front window'},
  {id:'guest-side',code:'W2',wall:'g-side',at:2.30,name:'Guest room side window'},
  {id:'living-side',code:'W2',wall:'g-divider',at:3.59,name:'Living room carport-side window'},

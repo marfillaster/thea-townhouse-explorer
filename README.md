@@ -23,13 +23,14 @@ vercel --prod
 - Pick a unit to focus it; **View block** returns to both rows.
 - Toggle or isolate building systems, filter floors, adjust wall opacity and separate floors.
 - Select walls, floors, roofs, windows or doors for measurements.
+- **2D Plan** draws the focused unit's floors north up with dimension chains. **Incl. walls** measures to wall centrelines and outer faces; **Clear** measures between wall faces, excluding the 150 mm walls; **Both** overlays them. Select a room for its clear and including-walls sizes.
 - Drag to orbit, scroll to zoom, right-drag to pan. Arrow keys orbit, `+`/`-` zoom, Home resets, Escape clears selection.
 
 ## Layout
 
 - `index.html`, `style.css`: page and styles
 - `app.js`: model geometry and UI
-- `*.mjs`: lots, block view, openings, wall surfaces, floors, conduit planning (shared geometry, floor and ceiling), measurements, selection outlines
+- `*.mjs`: lots, block view, openings, wall surfaces, floors, 2D floor plan, conduit planning (shared geometry, floor and ceiling), measurements, selection outlines
 - `tests/`: Node tests for the helpers
 
 ```sh

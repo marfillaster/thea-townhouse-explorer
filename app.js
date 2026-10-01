@@ -9,6 +9,7 @@ import { roomNames,buildWallSurfaces,buildWallExtensions,surfaceCodes } from './
 import { buildRoomFloorPlans, roomAtPoint, wallFootprint } from './room-floors.mjs';
 import { loopSegments, regionBoundary } from './selection-outlines.mjs';
 import { createMeasurements, surfaceDimensions, transformDimensions, rectangularRegions, regionProjection } from './measurements.mjs';
+import { buildFloorPlan, renderFloorPlans, formatMetres } from './floor-plan.mjs?v=floor-plan-6';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 const viewport=document.querySelector('#viewport');
 const sidebarToggle=document.querySelector('#sidebar-toggle'),sidebar=document.querySelector('#sidebar');
@@ -21,7 +22,7 @@ try{setSidebarCollapsed(localStorage.getItem('thea-sidebar-collapsed')==='true')
 sidebarToggle.onclick=()=>{const collapsed=!sidebar.hidden;setSidebarCollapsed(collapsed);requestAnimationFrame(resize);try{localStorage.setItem('thea-sidebar-collapsed',String(collapsed));}catch{}};
 
 const defs=[['structure','Structural','#c3cdd8','▧'],['roof','Roof framing','#8cd0aa','⌂'],['electrical','Electrical','#f4bd61','ϟ'],['data','Data lines','#b89aff','⌘'],['plumbing','Plumbing','#65bafa','⌁'],['doors','Doors','#dfa886','▯'],['windows','Windows','#73d5d5','⊞']];
-const state={scope:'block',showRearUnits:true,unitId:4,end:'right',layers:Object.fromEntries(defs.map(d=>[d[0],true])),level:'all',opacity:.3,explode:0,roofskin:true,labels:true,wallLabels:true,carportArea:false,view:'iso'};
+const state={scope:'block',showRearUnits:true,unitId:4,end:'right',layers:Object.fromEntries(defs.map(d=>[d[0],true])),level:'all',opacity:.3,explode:0,roofskin:true,labels:true,wallLabels:true,carportArea:false,view:'iso',plan:false,planMode:'both'};
 const scene=new THREE.Scene();scene.background=new THREE.Color('#101c2c');scene.fog=new THREE.Fog('#101c2c',90,250);
 const perspectiveCamera=new THREE.PerspectiveCamera(39,1,.1,2000),planCamera=new THREE.OrthographicCamera(-10,10,8,-8,.1,2000);let camera=perspectiveCamera;camera.position.set(-14,12,17);
 let renderer;try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});}catch(e){document.querySelector('#error').hidden=false;document.querySelector('#status').textContent='WebGL 2 unavailable';throw e;}
@@ -1424,6 +1425,7 @@ function sync(){
  document.querySelector('#roofskin').checked=state.roofskin;document.querySelector('#labels').checked=state.labels;document.querySelector('#carport-area').checked=state.carportArea;document.querySelector('#wall-labels').checked=state.wallLabels;
  if(selected&&!isVisible(selected))clearSelection();
  if(selected){scene.updateMatrixWorld(true);updateMeasurements();}
+ renderPlan();
 }
 function showAll(){for(const c of electricalCircuits)state.circuits[c.id]=true;for(const key in state.layers)state.layers[key]=true;clearSelection();sync();}
 function isolate(id){for(const key in state.layers)state.layers[key]=key===id;clearSelection();sync();}
@@ -1459,7 +1461,7 @@ function setView(view){
  document.querySelectorAll('[data-view]').forEach(el=>{el.classList.toggle('active',el.dataset.view===view);el.setAttribute('aria-pressed',String(el.dataset.view===view));});sync();
 }
 document.querySelectorAll('[data-view]').forEach(el=>el.onclick=()=>setView(el.dataset.view));
-document.querySelector('#reset').onclick=()=>{Object.assign(state,{level:'all',opacity:.3,explode:0,roofskin:true,labels:true,wallLabels:true,carportArea:false,view:'iso'});showAll();setView('iso');};
+document.querySelector('#reset').onclick=()=>{Object.assign(state,{level:'all',opacity:.3,explode:0,roofskin:true,labels:true,wallLabels:true,carportArea:false,view:'iso',plan:false});showAll();setView('iso');};
 viewport.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','=','-','Home'].includes(e.key))return;e.preventDefault();if(e.key==='Home'){setView('iso');return;}if(camera.isOrthographicCamera&&['+','=','-'].includes(e.key)){camera.zoom=Math.max(.35,Math.min(8,camera.zoom*(e.key==='-'?.9:1/.9)));camera.updateProjectionMatrix();return;}const offset=camera.position.clone().sub(controls.target);const spherical=new THREE.Spherical().setFromVector3(offset);if(e.key==='ArrowLeft')spherical.theta-=.12;if(e.key==='ArrowRight')spherical.theta+=.12;if(e.key==='ArrowUp')spherical.phi=Math.max(.02,spherical.phi-.1);if(e.key==='ArrowDown')spherical.phi=Math.min(Math.PI*.9,spherical.phi+.1);if(e.key==='+'||e.key==='=')spherical.radius=Math.max(4,spherical.radius*.9);if(e.key==='-')spherical.radius=Math.min(1500,spherical.radius*1.1);camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical));controls.update();});
 const raycaster=new THREE.Raycaster();let press=null;
 function isVisible(obj){let p=obj;while(p){if(!p.visible)return false;p=p.parent;}return obj.material.visible!==false;}
@@ -1604,8 +1606,85 @@ renderer.domElement.addEventListener('pointerup',e=>{
 });
 viewport.addEventListener('keydown',e=>{if(e.key==='Escape')clearSelection();});
 
+// 2D floor plan: canonical walls, openings and room regions drawn north up in
+// the active unit's orientation. Overall dimensions include wall thickness
+// (centrelines and outer faces); clear dimensions run between wall faces.
+const planView=document.querySelector('#plan-view'),planSvg=document.querySelector('#plan-svg'),planToggle=document.querySelector('#plan-toggle');
+const planCamera2d={box:null,fit:null,key:''};
+function planRooms(){
+ const surfaces=objects.filter(m=>m.userData.measurementKind==='floor').map(floorSurfaceBounds);
+ const rooms=buildRoomFloorPlans(walls,wallBaseSurfaces,surfaces).map(r=>({...r,name:roomNames[r.code]}));
+ rooms.push({code:'SA',name:'Service area',floor:0,regions:[floorSurfaceBounds(serviceFloorMesh)]});
+ return rooms;
+}
+function renderPlan(){
+ const open=state.plan&&state.scope==='unit';
+ planView.hidden=!open;planToggle.classList.toggle('active',open);planToggle.setAttribute('aria-pressed',String(open));planToggle.disabled=state.scope!=='unit';
+ if(!open)return;
+ const u=activeUnit();root.updateMatrixWorld(true);
+ const project=([x,z])=>{const p=root.localToWorld(new THREE.Vector3(x,0,z));return [p.x,p.z];};
+ const openings=reviewedOpenings.filter(o=>u.end||!['guest-side','master-side'].includes(o.id)),rooms=planRooms();
+ const floors=state.level==='all'?[0,1]:[Number(state.level)];
+ const {svg,viewBox}=renderFloorPlans(floors.map(f=>({title:f?'Second floor':'Ground floor',plan:buildFloorPlan({walls,faces:wallBaseSurfaces,openings,rooms,floor:f})})),project,state.planMode);
+ planSvg.innerHTML=svg;
+ const key=`${u.id}:${state.level}:${u.width}:${u.depth}`;
+ if(planCamera2d.key!==key){planCamera2d.key=key;planCamera2d.fit=viewBox;planCamera2d.box=null;}
+ planCamera2d.fit=viewBox;applyPlanBox();
+ document.querySelectorAll('[data-plan-mode]').forEach(el=>{const on=el.dataset.planMode===state.planMode;el.classList.toggle('active',on);el.setAttribute('aria-pressed',String(on));});
+ document.querySelector('#view-title').textContent='2D floor plan';
+ document.querySelector('#view-subtitle').textContent=`Unit ${u.id} · 2D plan · north up · ${({overall:'Including walls',clear:'Clear of walls',both:'Including and clear of walls'})[state.planMode]}`;
+ if(planCamera2d.room)selectPlanRoom(planCamera2d.room,planCamera2d.floor);
+}
+function applyPlanBox(){
+ const rect=planSvg.getBoundingClientRect(),[x,y,w,h]=planCamera2d.box??planCamera2d.fit;
+ if(!rect.width||!rect.height){planSvg.setAttribute('viewBox',[x,y,w,h].join(' '));return;}
+ // Keep 1:1 metres on both axes; pad the short side of the fitted box.
+ const aspect=rect.width/rect.height,fw=Math.max(w,h*aspect),fh=fw/aspect;
+ planCamera2d.box=[x+(w-fw)/2,y+(h-fh)/2,fw,fh];planSvg.setAttribute('viewBox',planCamera2d.box.join(' '));
+}
+function planPoint(e){const rect=planSvg.getBoundingClientRect(),[x,y,w,h]=planCamera2d.box;return [x+(e.clientX-rect.left)/rect.width*w,y+(e.clientY-rect.top)/rect.height*h];}
+function zoomPlan(factor,at){
+ const [x,y,w,h]=planCamera2d.box,[px,py]=at??[x+w/2,y+h/2],fit=planCamera2d.fit,nw=Math.min(Math.max(w*factor,2),Math.max(fit[2],fit[3])*4);
+ const k=nw/w;planCamera2d.box=[px-(px-x)*k,py-(py-y)*k,w*k,h*k];planSvg.setAttribute('viewBox',planCamera2d.box.join(' '));
+}
+planSvg.addEventListener('wheel',e=>{e.preventDefault();zoomPlan(Math.exp(e.deltaY*.0015),planPoint(e));},{passive:false});
+let planDrag=null;
+planSvg.addEventListener('pointerdown',e=>{if(e.button!==0)return;planDrag={x:e.clientX,y:e.clientY,box:[...planCamera2d.box],moved:false};planSvg.setPointerCapture(e.pointerId);});
+planSvg.addEventListener('pointermove',e=>{
+ if(!planDrag)return;const rect=planSvg.getBoundingClientRect(),dx=e.clientX-planDrag.x,dy=e.clientY-planDrag.y;
+ if(Math.hypot(dx,dy)>4)planDrag.moved=true;if(!planDrag.moved)return;
+ const [x,y,w,h]=planDrag.box;planCamera2d.box=[x-dx/rect.width*w,y-dy/rect.height*h,w,h];planSvg.setAttribute('viewBox',planCamera2d.box.join(' '));planSvg.classList.add('dragging');
+});
+planSvg.addEventListener('pointerup',e=>{
+ const drag=planDrag;planDrag=null;planSvg.classList.remove('dragging');if(!drag||drag.moved)return;
+ const room=e.target.closest?.('[data-room]');selectPlanRoom(room?.dataset.room??null,room?.closest('[data-floor]')?.dataset.floor);
+});
+planSvg.addEventListener('keydown',e=>{const room=e.target.closest?.('[data-room]');if(room&&(e.key==='Enter'||e.key===' ')){e.preventDefault();selectPlanRoom(room.dataset.room,room.closest('[data-floor]').dataset.floor);}if(e.key==='Escape')selectPlanRoom(null);});
+function selectPlanRoom(code,floor){
+ planSvg.querySelectorAll('.plan-room.selected').forEach(el=>el.classList.remove('selected'));
+ planCamera2d.room=code;planCamera2d.floor=floor;const card=document.querySelector('#selection');
+ if(!code){card.dataset.selected='false';card.innerHTML=initialInfo;return;}
+ planSvg.querySelectorAll(`[data-room="${code}"]`).forEach(el=>el.classList.add('selected'));
+ const u=activeUnit();root.updateMatrixWorld(true);
+ const project=([x,z])=>{const p=root.localToWorld(new THREE.Vector3(x,0,z));return [p.x,p.z];};
+ const room=planRooms().find(r=>r.code===code&&String(r.floor)===String(floor??r.floor));if(!room)return;
+ const span=r=>{const a=project([r.x0,r.z0]),b=project([r.x1,r.z0]),c=project([r.x1,r.z1]);return [Math.hypot(b[0]-a[0],b[1]-a[1]),Math.hypot(c[0]-b[0],c[1]-b[1])];};
+ const clear={x0:Math.min(...room.regions.map(g=>g.x0)),x1:Math.max(...room.regions.map(g=>g.x1)),z0:Math.min(...room.regions.map(g=>g.z0)),z1:Math.max(...room.regions.map(g=>g.z1))};
+ const [cw,cd]=span(clear),[ow,od]=span(room.bounds??clear),area=room.regions.reduce((s,g)=>{const [w,d]=span(g);return s+w*d;},0);
+ card.dataset.selected='true';
+ card.innerHTML=`<span class="eyebrow">FLOOR PLAN · ${room.floor?'SECOND':'GROUND'} FLOOR</span><h3></h3><p class="measurement-summary">Clear ${formatMetres(cw)} × ${formatMetres(cd)} m<br>Including walls ${formatMetres(ow)} × ${formatMetres(od)} m<br><small>Clear area ${area.toFixed(2)} m² · ${room.regions.length} region${room.regions.length>1?'s':''}</small></p><p>Clear dimensions run between wall faces and exclude wall footprints. Including-walls dimensions run to wall centrelines, so each bounding wall adds half its 150 mm thickness. Open-plan edges use the room's span divisions.</p><div class="card-footer">Unit ${u.id} · select another room or press Escape</div>`;
+ card.querySelector('h3').textContent=`${room.code} · ${room.name}`;
+}
+planToggle.onclick=()=>{state.plan=!state.plan;planCamera2d.room=null;clearSelection();sync();if(state.plan){planCamera2d.box=null;applyPlanBox();planSvg.focus();}};
+document.querySelectorAll('[data-plan-mode]').forEach(el=>el.onclick=()=>{state.planMode=el.dataset.planMode;sync();});
+document.querySelector('#plan-fit').onclick=()=>{planCamera2d.box=null;applyPlanBox();};
+document.querySelector('#plan-zoom-in').onclick=()=>zoomPlan(1/1.3);
+document.querySelector('#plan-zoom-out').onclick=()=>zoomPlan(1.3);
+document.querySelectorAll('[data-view]').forEach(el=>el.addEventListener('click',()=>{if(state.plan){state.plan=false;sync();}}));
+new ResizeObserver(()=>{if(state.plan&&planCamera2d.fit){planCamera2d.box=null;applyPlanBox();}}).observe(planSvg);
+
 const modelContext=document.modelContext;
 if(modelContext?.registerTool){const lifecycle=new AbortController();const tool={name:'configure_building_view',title:'Configure the building view',description:'Show chosen building systems and select a floor in the visible 3D model.',inputSchema:{type:'object',properties:{systems:{type:'array',items:{type:'string',enum:defs.map(d=>d[0])},uniqueItems:true},floor:{type:'string',enum:['all','0','1']}},required:['systems'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input){if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['systems','floor'].includes(k))||!Array.isArray(input.systems)||input.systems.some(id=>!defs.some(d=>d[0]===id))||new Set(input.systems).size!==input.systems.length||(input.floor!==undefined&&!['all','0','1'].includes(input.floor)))throw new Error('Choose valid systems and floor.');for(const id in state.layers)state.layers[id]=input.systems.includes(id);if(input.floor!==undefined)state.level=input.floor;clearSelection();sync();return {visibleSystems:defs.filter(d=>state.layers[d[0]]).map(d=>d[0]),floor:state.level};}};try{Promise.resolve(modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});}
 function resize(){const {width,height}=viewport.getBoundingClientRect();if(width<=0||height<=0)return;renderer.setSize(width,height,false);perspectiveCamera.aspect=width/height;perspectiveCamera.updateProjectionMatrix();const u=activeUnit(),bounds=state.scope==='block'?blockViewBounds():u;const span=Math.max(16,(bounds.depth+3),((bounds.width+3)/(width/height)));planCamera.left=-span*(width/height)/2;planCamera.right=-planCamera.left;planCamera.top=span/2;planCamera.bottom=-span/2;planCamera.updateProjectionMatrix();}new ResizeObserver(resize).observe(viewport);resize();setView('iso');sync();renderer.setAnimationLoop(()=>{controls.update();sizeSiteLabels();measurements.resize(camera,viewport.clientHeight,viewport.clientWidth);renderer.render(scene,camera);});
-window.townhouse={conduitSpec,ceilingPlans,kitchenSoffit,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
+window.townhouse={renderPlan,planRooms,conduitSpec,ceilingPlans,kitchenSoffit,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();document.querySelector('#error').hidden=false;});
