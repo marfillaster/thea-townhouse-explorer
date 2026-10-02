@@ -236,6 +236,45 @@ box('structure',0,(kitchenCounter.startX+kitchenCounter.endX)/2,kitchenCounter.t
 for(const x of [kitchenCounter.startX+.02,kitchenCounter.endX-.02])box('structure',0,x,(.25+kitchenCounter.top-kitchenCounter.thickness)/2,(kitchenCounter.rearZ+kitchenCounter.frontZ)/2,.04,kitchenCounter.top-kitchenCounter.thickness-.25,kitchenCounter.frontZ-kitchenCounter.rearZ,mats.concrete,'Kitchen counter support · approximate','IMG_5151 · A-4',counterDetail);
 function material(color,metalness=0){return new THREE.MeshStandardMaterial({color,roughness:.5,metalness});}
 const frameMat=material(0x82a9b8,.45),electricalMat=material(0xf5b74e,.2),powerMat=material(0xdf8d39,.2),waterMat=material(0x48b8ff,.3),wasteMat=material(0xb7a0f8,.2),fixtureMat=material(0xc0d9e8),skinMat=material(0x44627b,.35),railMat=material(0x7b8d9d,.45);
+// IMG_5161: canopies are dark brown stone-coated shingle panels laid in
+// stepped courses. The texture is drawn at 0.64 × 0.50 m (two tiles by two
+// courses) and mapped in metres so every canopy shares one tile scale.
+function shingleTexture(){
+ const c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d');
+ let seed=7;const rand=()=>(seed=(seed*16807)%2147483647)/2147483647;
+ const course=128,tile=128;
+ for(let row=0;row<2;row++)for(let col=-1;col<2;col++){
+  const x=col*tile+(row%2)*tile/2,y=row*course,shade=58+Math.round(rand()*14);
+  const grad=g.createLinearGradient(0,y,0,y+course);grad.addColorStop(0,`rgb(${shade+6},${shade-16},${shade-26})`);grad.addColorStop(.82,`rgb(${shade-6},${shade-26},${shade-34})`);grad.addColorStop(1,'rgb(28,18,15)');
+  g.fillStyle=grad;g.fillRect(x,y,tile,course);
+  g.fillStyle='rgba(20,12,10,.65)';g.fillRect(x,y,3,course);
+ }
+ // Stone granules.
+ for(let i=0;i<9000;i++){const v=rand();g.fillStyle=v<.5?`rgba(20,12,10,${.25+rand()*.3})`:`rgba(150,110,90,${.12+rand()*.2})`;g.fillRect(rand()*256,rand()*256,1.4,1.4);}
+ const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1/.64,1/.50);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;return t;
+}
+// Plan-projected UVs in metres: top faces map x/z, side faces their own plane.
+function metreUVs(geo){
+ const pos=geo.attributes.position,nor=geo.attributes.normal,uv=new Float32Array(pos.count*2);
+ for(let i=0;i<pos.count;i++){const nx=Math.abs(nor.getX(i)),ny=Math.abs(nor.getY(i));uv[i*2]=nx>ny&&nx>Math.abs(nor.getZ(i))?pos.getZ(i):pos.getX(i);uv[i*2+1]=ny>=nx&&ny>=Math.abs(nor.getZ(i))?-pos.getZ(i):pos.getY(i);}
+ geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));return geo;
+}
+const shingleMat=new THREE.MeshStandardMaterial({map:shingleTexture(),roughness:.9,metalness:.05});
+function shingle(mesh){metreUVs(mesh.geometry);mesh.material=shingleMat;mesh.userData.shingle=true;return mesh;}
+// GI sheet roofs: rib-type profile with ribs running north-south, down the
+// slope. Flat pans between narrow raised ribs at a 250 mm pitch. Drawn as a
+// shaded texture with a matching bump map.
+const giRib={pitch:.25,width:.035};
+function corrugationTexture(){
+ const px=128,c=document.createElement('canvas');c.width=px;c.height=4;const g=c.getContext('2d');
+ const rib=Math.round(px*giRib.width/giRib.pitch);
+ g.fillStyle='rgb(170,170,170)';g.fillRect(0,0,px,4);
+ for(let x=0;x<rib;x++){const t=x/(rib-1),v=Math.round(t<.5?235-40*t:120+60*t);g.fillStyle=`rgb(${v},${v},${v})`;g.fillRect(x,0,1,4);}
+ const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1/giRib.pitch,1);t.anisotropy=8;return t;
+}
+const giRoofMat=skinMat.clone(),corrugation=corrugationTexture();
+Object.assign(giRoofMat,{map:corrugation,bumpMap:corrugation,bumpScale:3});
+function corrugate(mesh){metreUVs(mesh.geometry);mesh.material=giRoofMat;mesh.userData.corrugated=true;return mesh;}
 function beam(sys,f,a,b,width,depth,mat,name,source,detail){const av=new THREE.Vector3(...a),bv=new THREE.Vector3(...b),d=bv.clone().sub(av);const mesh=part(new THREE.BoxGeometry(width,d.length(),depth),mat,sys,f,av.clone().add(bv).multiplyScalar(.5).toArray(),name,source,detail);mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());return mesh;}
 function route(sys,f,points,radius,mat,name,source,detail){const group=new THREE.Group();for(let i=1;i<points.length;i++){const a=new THREE.Vector3(...points[i-1]),b=new THREE.Vector3(...points[i]),delta=b.clone().sub(a);if(delta.length()<.001)continue;const m=part(new THREE.CylinderGeometry(radius,radius,delta.length(),8),mat,sys,f,a.add(b).multiplyScalar(.5).toArray(),name,source,detail,false);m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());}for(const pt of points.slice(1,-1))part(new THREE.SphereGeometry(radius,8,6),mat,sys,f,pt,name,source,detail,false);return group;}
 // Frames, closed door leaves, and casement divisions follow the A-4 schedule.
@@ -346,14 +385,15 @@ const bathroomRoofRegions=[{x0:bathroomRoof.x0,x1:rightRoofSpec.x0,z0:bathroomRo
 const bathroomRoofNote='The bathroom covering is part of the Bedroom 1 roof: one continuous surface with the same slope as Bedroom 1. The master-bedroom roof remains separate and clears the bathroom. Covering and framing follow the bathroom extension. Heights and member profiles remain approximate.';
 const balconyRoofNote='The separate master-bedroom roof keeps its nominal 400 mm exposed north/east eave projection and ends at the BL-WI window midpoint. Its corner clears the bathroom roof. Roof pitch, absolute height and member profiles remain approximate.';
 const rightRoofNote='Bedroom 1 and bathroom share the original west roof slope. Roof edges stop inside the west and north firewalls; the east roof stops at the middle wall. Extended wall heights follow the latest east-apex and front-parapet datums.';
-function roofCovering(r,outline,regions,name,detail,flags={},left=false){
+function roofCovering(r,outline,regions,name,detail,flags={},left=false,shingled=false){
+ // Only the inner-unit balcony canopy is shingled; end-unit master roofs stay GI.
  const slope=(r.y1-r.y0)/(r.z1-r.z0),height=z=>r.y0+(z-r.z0)*slope;
  const shape=new THREE.Shape();outline.forEach(([x,z],i)=>i?shape.lineTo(x,-z):shape.moveTo(x,-z));shape.closePath();
  const geometry=new THREE.ExtrudeGeometry(shape,{depth:.035,bevelEnabled:false,steps:1}),positions=geometry.attributes.position,angle=Math.atan(slope);
  for(let i=0;i<positions.count;i++){const x=positions.getX(i),z=-positions.getY(i),offset=positions.getZ(i)-.035/2;positions.setXYZ(i,x,height(z)+.14+offset*Math.cos(angle),z-offset*Math.sin(angle));}
  geometry.computeVertexNormals();geometry.computeBoundingBox();geometry.computeBoundingSphere();
  const skin=part(geometry,skinMat,'roof',2,[0,0,0],name,'A-3 · S-2',detail);
- Object.assign(skin.userData,{skin:true,continuousRoof:true,roofOutline:outline,roofRegions:regions,roofSlope:slope,roofHeightOrigin:[r.z0,r.y0+.14],...flags,measurementSpecs:[{a:[Math.min(...outline.map(p=>p[0])),height(r.z0)+.14,r.z0],b:[r.x1,height(r.z0)+.14,r.z0],offset:[0,0,-.28],label:'Overall width'},{a:[left?r.x0:r.x1,height(r.z0)+.14,r.z0],b:[left?r.x0:r.x1,height(r.z1)+.14,r.z1],offset:[left?-.28:.28,0,0],label:'Slope length'}]});roofSkins.push(skin);return skin;
+ if(shingled)shingle(skin);else corrugate(skin);Object.assign(skin.userData,{skin:true,continuousRoof:true,roofOutline:outline,roofRegions:regions,roofSlope:slope,roofHeightOrigin:[r.z0,r.y0+.14],...flags,measurementSpecs:[{a:[Math.min(...outline.map(p=>p[0])),height(r.z0)+.14,r.z0],b:[r.x1,height(r.z0)+.14,r.z0],offset:[0,0,-.28],label:'Overall width'},{a:[left?r.x0:r.x1,height(r.z0)+.14,r.z0],b:[left?r.x0:r.x1,height(r.z1)+.14,r.z1],offset:[left?-.28:.28,0,0],label:'Slope length'}]});roofSkins.push(skin);return skin;
 }
 for(const r of [...[balconyRoof,innerBalconyRoof].map((roof,i)=>({x0:roof.eastX,x1:roof.westX,z0:roof.rearZ,z1:roof.endZ,y0:roof.rearY,y1:roof.heightAt(roof.endZ),variant:i?'inner':'end'})),{...rightRoofSpec,variant:'end',westRoof:true}]){
  const start=objects.length,leftRoof=!r.westRoof,notchedMaster=leftRoof&&r.variant==='end',roofNote=r.variant==='inner'?innerBalconyRoofNote:balconyRoofNote,slope=(r.y1-r.y0)/(r.z1-r.z0),height=z=>r.y0+(z-r.z0)*slope;
@@ -373,7 +413,7 @@ for(const r of [...[balconyRoof,innerBalconyRoof].map((roof,i)=>({x0:roof.eastX,
  }
  const regions=notchedMaster?[{x0:r.x0,x1:masterRoofCutX,z0:r.z0,z1:bathroomRoof.z1},{x0:r.x0,x1:r.x1,z0:bathroomRoof.z1,z1:r.z1}]:leftRoof?[r]:[r,...bathroomRoofRegions];
  const outline=notchedMaster?[[r.x0,r.z0],[masterRoofCutX,r.z0],[masterRoofCutX,bathroomRoof.z1],[r.x1,bathroomRoof.z1],[r.x1,r.z1],[r.x0,r.z1]]:leftRoof?[[r.x0,r.z0],[r.x1,r.z0],[r.x1,r.z1],[r.x0,r.z1]]:[[r.x0,r.z0],[r.x1,r.z0],[r.x1,r.z1],[r.x0,r.z1],[r.x0,bathroomRoof.z1],[bathroomRoof.x0,bathroomRoof.z1],[bathroomRoof.x0,bathroomRoof.z0],[r.x0,bathroomRoof.z0]];
- roofCovering(r,outline,regions,leftRoof?(r.variant==='inner'?'Balcony canopy roof covering':'Master-bedroom roof covering'):'Bedroom 1 and bathroom · continuous roof covering',leftRoof?roofNote:bathroomRoofNote,{bathroomRoofExtension:!leftRoof},leftRoof);
+ roofCovering(r,outline,regions,leftRoof?(r.variant==='inner'?'Balcony canopy roof covering':'Master-bedroom roof covering'):'Bedroom 1 and bathroom · continuous roof covering',leftRoof?roofNote:bathroomRoofNote,{bathroomRoofExtension:!leftRoof},leftRoof,leftRoof&&r.variant==='inner');
  const group=new THREE.Group();systems.roof[2].add(group);objects.slice(start).forEach(m=>{group.add(m);Object.assign(m.userData,leftRoof?{balconyRoof:true,roofVariant:r.variant,roofVariantFrame:!m.userData.skin,detail:roofNote}:{rightRoof:true,roofVariant:'end',roofVariantFrame:!m.userData.skin,detail:rightRoofNote});if(m.userData.name.startsWith('Bathroom Bedroom 1 roof'))m.userData.bathroomRoofExtension=true;});roofPlanes.push(group);
 }
 // One connected outline covers both bedrooms and the bathroom behind the canopy.
@@ -406,6 +446,7 @@ const innerMainRoofNote='Inner-unit master bedroom, Bedroom 1 and bathroom share
 // aligned with the entrance.
 const mainEntry=reviewedOpenings.find(o=>o.id==='main-entry'),entryWindow=reviewedOpenings.find(o=>o.id==='living-front');
 const entryCanopy={x0:mainEntry.x-mainEntry.w/2-.20,x1:entryWindow.x-entryWindow.w/2};
+const canopyFasciaMat=material(0x3e2a24,.15);
 for(const [f,x,y,z,w,d]of [[0,(entryCanopy.x0+entryCanopy.x1)/2,2.65,mainEntry.z+.35,entryCanopy.x1-entryCanopy.x0,.75],[1,1.3,5.75,3.98,2.85,.55]]){
  const start=objects.length,drop=.12,slope=Math.atan2(drop,d);
  const source=f===0?'IMG_3333 · A-4':'S-2';
@@ -413,15 +454,15 @@ for(const [f,x,y,z,w,d]of [[0,(entryCanopy.x0+entryCanopy.x1)/2,2.65,mainEntry.z
  for(const offset of [-w/2+.035,w/2-.035])beam('roof',f,[x+offset,y,z-d/2],[x+offset,y-drop,z+d/2],.065,.07,mats.roof,'Front canopy frame',source,detail);
  for(const off of [-d/2+.04,d/2-.04]){const h=y-drop*(off+d/2)/d;beam('roof',f,[x-w/2,h,z+off],[x+w/2,h,z+off],.065,.07,mats.roof,'Canopy purlin',source,detail);}
  const cover=(mesh)=>{mesh.userData.skin=true;roofSkins.push(mesh);return mesh;};
- const skin=cover(box('roof',f,x,y-drop/2+.065,z,w,.04,Math.hypot(d,drop),skinMat,'Canopy covering',source,detail));skin.rotation.x=slope;skin.userData.measurementKind='roof';
- cover(box('roof',f,x,y-drop+.005,z+d/2-.015,w,.14,.03,skinMat,'Canopy front fascia',source,detail));
+ const skin=shingle(cover(box('roof',f,x,y-drop/2+.065,z,w,.04,Math.hypot(d,drop),skinMat,'Canopy covering',source,detail)));skin.rotation.x=slope;skin.userData.measurementKind='roof';
+ cover(box('roof',f,x,y-drop+.005,z+d/2-.015,w,.14,.03,canopyFasciaMat,'Canopy front fascia',source,detail));
  const flatBottom=y-drop-.065;
  for(const side of [-1,1]){
   if(f===0){
    // Sloping top edge and level bottom edge enclose the varying roof void.
    const geo=new THREE.BoxGeometry(.03,.20,d),vertices=geo.attributes.position;
    for(let i=0;i<vertices.count;i++){const top=y+.075-drop*(vertices.getZ(i)+d/2)/d;vertices.setY(i,vertices.getY(i)>0?top:flatBottom);}
-   geo.computeVertexNormals();cover(part(geo,skinMat,'roof',f,[x+side*(w/2-.015),0,z],'Canopy side fascia',source,detail));
+   geo.computeVertexNormals();cover(part(geo,canopyFasciaMat,'roof',f,[x+side*(w/2-.015),0,z],'Canopy side fascia',source,detail));
   }else{const trim=cover(box('roof',f,x+side*(w/2-.015),y-drop/2-.005,z,.03,.13,Math.hypot(d,drop),skinMat,'Canopy side fascia',source,detail));trim.rotation.x=slope;}
  }
  const underside=cover(box('roof',f,x,f===0?flatBottom+.0125:y-drop/2-.06,f===0?z-.015:z,f===0?w-.06:w,.025,f===0?d-.03:Math.hypot(d,drop),frameMat,'Canopy soffit',source,detail));underside.rotation.x=f===0?0:slope;canopySoffits.push(underside);
@@ -431,7 +472,8 @@ for(const [f,x,y,z,w,d]of [[0,(entryCanopy.x0+entryCanopy.x1)/2,2.65,mainEntry.z
 const roofFrames=objects.filter(m=>m.userData.system==='roof'&&!m.userData.skin);
 // Visible details observed on the right-end house. Local profiles are visual
 // estimates; these do not replace the blueprint's structural specifications.
-const darkFascia=material(0x39383a,.25);
+// IMG_5161: roof edges, caps and copings are dark brown.
+const darkFascia=material(0x45302a,.2);
 const photoNote='Visible in the supplied right-end photographs. Profile and projection are estimated from perspective photos; plan dimensions remain the scale reference.';
 function photoBox(sys,f,x,y,z,w,h,d,mat,name,source,cover=false){const m=box(sys,f,x,y,z,w,h,d,mat,name,source,photoNote);m.userData.photoOnly=true;m.userData.photoCover=cover;photoOnly.push(m);return m;}
 // IMG_5152: rear firewall projects east of the upper bathroom facade,
@@ -539,14 +581,67 @@ objects.slice(innerNorthTrimsStart).forEach(m=>Object.assign(m.userData,{roofVar
 
 // Window surrounds: photo-observed on the outside, not extra openings.
 const outsideFaces={'g-side':[-1,0],'g-bath-rear':[0,-1],'g-service':[-1,0],'g-front':[0,1],'g-guest-front':[0,1],'g-divider':[-1,0],'u-side':[-1,0],'u-master-rear':[0,-1],'u-bath-side':[-1,0],'u-balcony':[0,1],'u-front':[0,1],'u-divider':[-1,0]};
+// IMG_5161 (two inner units, front): the front windows differ. W1a has a sill
+// only; W3 has a white surround over a wider sill; the party-side W7 has a grey
+// surround on a stepped sill band that runs to the party wall and meets the
+// neighbour's; W10 and the balcony W7 have no surround. Sizes are estimated
+// from the photo.
+const facadeGrey=photoTrim.clone();facadeGrey.color.set(0xd3d8d9);
+const facadePanel=photoTrim.clone();facadePanel.color.set(0xc4ccd2);
+wallMaterials.push(facadeGrey,facadePanel);
+const facadeSource='IMG_5161';
+const frontWindowTrims={
+ 'guest-front':{sill:{extra:.12,h:.08,d:.10}},
+ 'living-front':{surround:.12,mat:photoTrim,sill:{extra:.06,h:.08,d:.12}},
+ 'bedroom-front':{surround:.11,mat:facadeGrey,sillBand:true},
+ 'bedroom-front-ac':{},
+ 'master-balcony':{}
+};
+const partyWallX=walls.find(w=>w.id==='u-party').a[0];
+const carportWindows=new Set(['living-side']);
 for(const o of reviewedOpenings.filter(o=>o.system==='windows')){
  const dir=outsideFaces[o.wall];if(!dir)continue;
  const x=o.x+dir[0]*.095,z=o.z+dir[1]*.095,y=o.base+o.sill;
- const source=o.floor?'IMG_3333 · IMG_3335 · IMG_2849':'IMG_3334 · IMG_2849';
- const trim=(along,up,w,h)=>{const m=photoBox('windows',o.floor,x+(o.axis==='x'?along:0),y+up,z+(o.axis==='z'?along:0),o.axis==='x'?w:.08,h,o.axis==='x'?.08:w,photoTrim,o.code+' exterior trim',source);m.userData.openingId=o.id;return m;};
- trim(0,-.055,o.w+.20,.11);trim(0,o.h+.055,o.w+.20,.11);
- if(o.floor)for(const side of [-1,1])trim(side*(o.w/2+.045),o.h/2,.09,o.h);
+ const front=frontWindowTrims[o.id];
+ const source=front?facadeSource:o.floor?'IMG_3333 · IMG_3335 · IMG_2849':'IMG_3334 · IMG_2849';
+ const trim=(along,up,w,h,mat=photoTrim,depth=.08,name=o.code+' exterior trim')=>{const out=depth/2-.04,m=photoBox('windows',o.floor,x+(o.axis==='x'?along:dir[0]*out),y+up,z+(o.axis==='z'?along:dir[1]*out),o.axis==='x'?w:depth,h,o.axis==='x'?depth:w,mat,name,source);m.userData.openingId=o.id;return m;};
+ if(!front){
+  // Windows facing the carport have a sill but no head trim.
+  trim(0,-.055,o.w+.20,.11);if(!carportWindows.has(o.id))trim(0,o.h+.055,o.w+.20,.11);
+  if(o.floor)for(const side of [-1,1])trim(side*(o.w/2+.045),o.h/2,.09,o.h);
+  continue;
+ }
+ const s=front.surround;
+ if(s){
+  trim(0,o.h+s/2,o.w+2*s,s,front.mat,.06,o.code+' exterior surround');
+  for(const side of [-1,1])trim(side*(o.w+s)/2,o.h/2,s,o.h,front.mat,.06,o.code+' exterior surround');
+  if(!front.sill&&!front.sillBand)trim(0,-s/2,o.w+2*s,s,front.mat,.06,o.code+' exterior surround');
+ }
+ if(front.sill){const {extra,h,d}=front.sill;trim(0,-h/2,o.w+2*(s||0)+2*extra,h,front.mat||photoTrim,d,o.code+' projecting sill');}
 }
+// Stepped sill band under both party-side Bedroom 1 windows, continuous across
+// the party wall; the grey panel below it runs down to the floor band line.
+const bedroomFront=reviewedOpenings.find(o=>o.id==='bedroom-front'),frontFaceZ=bedroomFront.z+.075;
+const sillBand={x0:bedroomFront.x-bedroomFront.w/2-frontWindowTrims['bedroom-front'].surround-.06,x1:partyWallX,top:bedroomFront.base+bedroomFront.sill,upper:.07,lower:.05};
+sillBand.panelX0=sillBand.x0+.03;sillBand.panelTop=sillBand.top-sillBand.upper-sillBand.lower;
+function facadeBox(f,x0,x1,y0,y1,depth,mat,name,sys='structure'){const m=photoBox(sys,f,(x0+x1)/2,(y0+y1)/2,frontFaceZ+depth/2,x1-x0,y1-y0,depth,mat,name,facadeSource);m.userData.frontFacade=true;return m;}
+facadeBox(1,sillBand.x0,sillBand.x1,sillBand.top-sillBand.upper,sillBand.top,.14,facadeGrey,'W7 sill band · upper tier','windows').userData.openingId='bedroom-front';
+facadeBox(1,sillBand.panelX0,sillBand.x1,sillBand.panelTop,sillBand.top-sillBand.upper,.10,facadeGrey,'W7 sill band · lower tier','windows').userData.openingId='bedroom-front';
+// Paint is drawn as a 20 mm render skin, enough to cover the 15 mm beam edge. White starts at the floor
+// band line (+2.745), above the entrance canopy; yellow stays below.
+const frontPaintBottom=2.745,frontBlockX0=walls.find(w=>w.id==='u-divider').a[0]-.075;
+facadeBox(0,frontBlockX0,partyWallX,frontPaintBottom,3.12,.02,photoUpperWall,'Front wall paint · white above canopy');
+facadeBox(1,sillBand.panelX0,partyWallX,frontPaintBottom,sillBand.panelTop,.022,facadePanel,'Front wall paint · grey panel below W7');
+// Eyebrow ledges: a long lower ledge over the Bedroom 1 windows from the block
+// corner, stopping short of the party-side W7, and a higher centred ledge that
+// spans the party wall into the neighbouring unit.
+const eyebrows={lower:{x0:frontBlockX0,x1:bedroomFront.x+bedroomFront.w/2+.11-.10,y:5.60},upper:{x0:4.22,x1:partyWallX,y:5.92},h:.08,d:.10};
+facadeBox(1,eyebrows.lower.x0,eyebrows.lower.x1,eyebrows.lower.y-eyebrows.h/2,eyebrows.lower.y+eyebrows.h/2,eyebrows.d,facadeGrey,'Front eyebrow ledge · lower');
+facadeBox(1,eyebrows.upper.x0,eyebrows.upper.x1,eyebrows.upper.y-eyebrows.h/2,eyebrows.upper.y+eyebrows.h/2,eyebrows.d,facadeGrey,'Front eyebrow ledge · centre');
+// Yellow bands paint the wall above and below the centre ledge, inset slightly
+// from its end and stopping just above the lower ledge.
+const centreLedgePaint={x0:eyebrows.upper.x0+.08,bottom:eyebrows.upper.y-.25,top:eyebrows.upper.y+.25};
+facadeBox(1,centreLedgePaint.x0,partyWallX,centreLedgePaint.bottom,centreLedgePaint.top,.02,photoLowerWall,'Front wall paint · yellow around centre ledge');
 // Kitchen plumbing is concealed by a dropped soffit below the upper slab.
 const kitchenSoffit={x0:walls.find(w=>w.id==='g-service').a[0]+.075,x1:walls.find(w=>w.id==='u-stair').a[0],z0:walls.find(w=>w.id==='g-rear').a[1]+.075,z1:walls.find(w=>w.id==='g-bath-rear').a[1]+.075+.0762,bottom:2.77,top:2.95,thickness:.012};
 // Owner-observed: the 180 mm deep soffit's edge sits 3 in off the wall line, in line
@@ -1556,7 +1651,7 @@ const lotsKey='thea-block-lots-v1';
 let lots=defaultLots();try{const saved=localStorage.getItem(lotsKey);lots=restoreLots(saved);if(saved!==null)localStorage.setItem(lotsKey,JSON.stringify(lots));}catch{}
 let block=layoutBlock(minimumLots());
 const plot={};
-mats.door.color.set(0xe9e7df);frameMat.color.set(0xe4e3db);mats.glass.color.set(0x869b9f);railMat.color.set(0x353237);skinMat.color.set(0x484348);
+mats.door.color.set(0xe9e7df);frameMat.color.set(0xe4e3db);mats.glass.color.set(0x869b9f);railMat.color.set(0x353237);skinMat.color.set(0x484348);giRoofMat.color.set(0x5c595e);
 const blockView=createBlockView(scene,systems,wallMaterials),{siteGroup,siteLabels}=blockView;
 function activeUnit(){return block.units[state.unitId-1];}
 function blockViewBounds(){
@@ -1634,7 +1729,7 @@ function sync(){
  wallGroutMat.opacity=state.opacity;wallGroutMat.visible=state.opacity>0;
  objects.filter(m=>m.userData.isWall).forEach(m=>{m.material=m.userData.floor?photoUpperWall:photoLowerWall;m.children.forEach(c=>{if(c.isLineSegments)c.material.opacity=right&&state.opacity>.95?.12:.48;});});
  mats.door.color.set(0xe9e7df);frameMat.color.set(0xe4e3db);frameMat.metalness=.15;
- mats.glass.color.set(0x869b9f);railMat.color.set(0x353237);skinMat.color.set(0x484348);
+ mats.glass.color.set(0x869b9f);railMat.color.set(0x353237);skinMat.color.set(0x484348);giRoofMat.color.set(0x5c595e);
  photoOnly.forEach(m=>m.visible=!m.userData.photoCover||state.roofskin);
  // Roof geometry and trim already terminate at the BL-WI window midpoint.
  canopyGroups[1].visible=false;
@@ -1992,5 +2087,5 @@ new ResizeObserver(()=>{if(state.plan&&planCamera2d.fit){planCamera2d.box=null;a
 const modelContext=document.modelContext;
 if(modelContext?.registerTool){const lifecycle=new AbortController();const tool={name:'configure_building_view',title:'Configure the building view',description:'Show chosen building systems and select a floor in the visible 3D model.',inputSchema:{type:'object',properties:{systems:{type:'array',items:{type:'string',enum:defs.map(d=>d[0])},uniqueItems:true},floor:{type:'string',enum:['all','0','1']}},required:['systems'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input){if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['systems','floor'].includes(k))||!Array.isArray(input.systems)||input.systems.some(id=>!defs.some(d=>d[0]===id))||new Set(input.systems).size!==input.systems.length||(input.floor!==undefined&&!['all','0','1'].includes(input.floor)))throw new Error('Choose valid systems and floor.');for(const id in state.layers)state.layers[id]=input.systems.includes(id);if(input.floor!==undefined)state.level=input.floor;clearSelection();sync();return {visibleSystems:defs.filter(d=>state.layers[d[0]]).map(d=>d[0]),floor:state.level};}};try{Promise.resolve(modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});}
 function resize(){const {width,height}=viewport.getBoundingClientRect();if(width<=0||height<=0)return;renderer.setSize(width,height,false);perspectiveCamera.aspect=width/height;perspectiveCamera.updateProjectionMatrix();const u=activeUnit(),bounds=state.scope==='block'?blockViewBounds():u;const span=Math.max(16,(bounds.depth+3),((bounds.width+3)/(width/height)));planCamera.left=-span*(width/height)/2;planCamera.right=-planCamera.left;planCamera.top=span/2;planCamera.bottom=-span/2;planCamera.updateProjectionMatrix();}new ResizeObserver(resize).observe(viewport);resize();setView('iso');sync();renderer.setAnimationLoop(()=>{controls.update();sizeSiteLabels();measurements.resize(camera,viewport.clientHeight,viewport.clientWidth);renderer.render(scene,camera);});
-window.townhouse={bathroomTiles,wallTile,wallTileRoutes,showerDrains,septicTank,septicVent,septicCleanout,planStairs,planCovers,entryCanopy,renderPlan,planRooms,conduitSpec,ceilingPlans,kitchenSoffit,groundBathCeiling,upperCeiling,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,masterCornerCover,upperChase,soffitJunctionBox,waterRiser,waterInlet,faucetProvisions,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,upperVentRiser,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
+window.townhouse={centreLedgePaint,eyebrows,sillBand,bathroomTiles,wallTile,wallTileRoutes,showerDrains,septicTank,septicVent,septicCleanout,planStairs,planCovers,entryCanopy,renderPlan,planRooms,conduitSpec,ceilingPlans,kitchenSoffit,groundBathCeiling,upperCeiling,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,masterCornerCover,upperChase,soffitJunctionBox,waterRiser,waterInlet,faucetProvisions,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,upperVentRiser,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();document.querySelector('#error').hidden=false;});
