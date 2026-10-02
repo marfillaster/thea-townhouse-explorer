@@ -9,7 +9,7 @@ import { roomNames,buildWallSurfaces,buildWallExtensions,surfaceCodes } from './
 import { buildRoomFloorPlans, roomAtPoint, wallFootprint } from './room-floors.mjs';
 import { loopSegments, regionBoundary } from './selection-outlines.mjs';
 import { createMeasurements, surfaceDimensions, transformDimensions, rectangularRegions, regionProjection } from './measurements.mjs';
-import { buildFloorPlan, renderFloorPlans, formatMetres, planStyles, exportFloorPlanSvg } from './floor-plan.mjs?v=plan-labels-1';
+import { buildFloorPlan, renderFloorPlans, formatMetres, planStyles, exportFloorPlanSvg } from './floor-plan.mjs?v=door-dims-3';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 const viewport=document.querySelector('#viewport');
 const sidebarToggle=document.querySelector('#sidebar-toggle'),sidebar=document.querySelector('#sidebar');
@@ -48,11 +48,12 @@ function slab(f,x,z,w,d,y,name){const m=box('structure',f,x,y-.075,z,w,.15,d,mat
 slab(0,3.8,1.355,2.5,4.94,.25,'Living and dining floor slab');
 slab(0,3.55,-2.47,3,2.71,.25,'Kitchen floor slab');
 slab(0,1.275,.005,2.55,2.24,.25,'Guest room slab');
-slab(0,1.025,-1.7,2.05,1.16,.15,'Ground bathroom slab');
+// B0 slab top sits 10 mm below the ground finished floor so its tiles finish flush at +0.25.
+slab(0,1.025,-1.7,2.05,1.16,.24,'Ground bathroom slab');
 slab(1,1.275,.775,2.55,6.1,3.1,'Master bedroom and balcony slab');
 slab(1,3.8,1.55,2.5,4.55,3.1,'Bedroom 1 slab');
 slab(1,3.05,-2.275,2,3.1,3.1,'Upper bathroom and landing slab');
-// The as-built carport surface is gravel.
+// The carport surface is drawn plain, without a gravel texture.
 // Interior foundation envelopes remain schematic. There is no strip footing
 // on CP-WI; the continuous exposed east-side footing is modeled below.
 for(const [x,z,w,d] of [[3.8,1.355,2.5,4.94],[3.55,-2.47,3,2.71],[1.025,-.575,2.2,3.5]])box('structure',0,x,-.20,z,w,.25,d,mats.beam,'Mat foundation / footing band','S-1','Simplified foundation envelope; footing tie beams and reinforcement remain schematic.');
@@ -464,8 +465,12 @@ carportFooting.exteriorX=-carportFooting.wallThickness/2-carportFooting.exterior
 carportFooting.width=carportFooting.interiorX-carportFooting.exteriorX;
 carportFooting.centerX=(carportFooting.interiorX+carportFooting.exteriorX)/2;
 carportFooting.z=(carportFooting.north+carportFooting.south)/2;carportFooting.length=carportFooting.south-carportFooting.north;
-const exposedFooting=box('structure',0,carportFooting.centerX,(carportFooting.top+carportFooting.bottom)/2,carportFooting.z,carportFooting.width,carportFooting.top-carportFooting.bottom,carportFooting.length,mats.concrete,'East-side footing · to north lot boundary','IMG_5148 · IMG_5149','Per your correction, footing follows the right/east side continuously from the carport to the north lot boundary. Its top is level with the ground finished floor (+0.25 m). There is no footing along CP-WI. Owner measurements: approximately 400 mm inward from the interior wall face and 340 mm outward from the exterior face, for 890 mm total width including the modeled 150 mm wall. Buried thickness remains approximate.');
-exposedFooting.userData.carportFooting=true;
+// The footing stops at the ground bathroom: inside B0 only the part under
+// and outside the wall remains, so the tiled floor is clear.
+const footingGap={z0:walls.find(w=>w.id==='g-bath-rear').a[1]+.075,z1:walls.find(w=>w.id==='g-bath-south').a[1]-.075,x1:carportFooting.wallThickness/2};
+const footingPieces=[{x0:carportFooting.exteriorX,x1:carportFooting.interiorX,z0:carportFooting.north,z1:footingGap.z0},{x0:carportFooting.exteriorX,x1:footingGap.x1,z0:footingGap.z0,z1:footingGap.z1},{x0:carportFooting.exteriorX,x1:carportFooting.interiorX,z0:footingGap.z1,z1:carportFooting.south}];
+const exposedFootings=footingPieces.map(r=>box('structure',0,(r.x0+r.x1)/2,(carportFooting.top+carportFooting.bottom)/2,(r.z0+r.z1)/2,r.x1-r.x0,carportFooting.top-carportFooting.bottom,r.z1-r.z0,mats.concrete,'East-side footing · to north lot boundary','IMG_5148 · IMG_5149','Per your correction, footing follows the right/east side continuously from the carport to the north lot boundary. Its top is level with the ground finished floor (+0.25 m). There is no footing along CP-WI. Owner measurements: approximately 400 mm inward from the interior wall face and 340 mm outward from the exterior face, for 890 mm total width including the modeled 150 mm wall. Buried thickness remains approximate.'));
+exposedFootings.forEach(m=>m.userData.carportFooting=true);
 // Subtle east-to-west fall; 1.2% is an illustrative amount, not a surveyed grade.
 const terrain={slope:.012,referenceEast:2.525,heightAt(x){return -.025+this.slope*(x-this.referenceEast);}};
 // Concrete occupies the original rear service recess between the east footing
@@ -480,11 +485,11 @@ serviceFloorGeometry.computeVertexNormals();
 const serviceFloorMesh=part(serviceFloorGeometry,mats.concrete,'structure',0,[serviceFloorX,0,serviceFloorZ],'Concrete floor · kitchen exterior service area','A-2 · IMG_2849','Concrete floor between the continuous east-side footing and the original kitchen service area, following your description. The pad ends at the north lot boundary and the bathroom exterior wall. It meets the footing at ground-floor level; thickness and the slight east-to-west fall remain approximate.');
 serviceFloorMesh.userData.serviceFloor=true;serviceFloorMesh.userData.measurementKind='floor';
 
-const gravelCanvas=document.createElement('canvas');gravelCanvas.width=gravelCanvas.height=256;const gravelCtx=gravelCanvas.getContext('2d');gravelCtx.fillStyle='#6d7271';gravelCtx.fillRect(0,0,256,256);let gravelSeed=5147;const gravelRandom=()=>{gravelSeed=(gravelSeed*1664525+1013904223)>>>0;return gravelSeed/4294967296;};for(let i=0;i<3600;i++){const x=gravelRandom()*256,y=gravelRandom()*256,r=1.3+gravelRandom()*2.8,c=Math.floor(75+gravelRandom()*105);gravelCtx.fillStyle=`rgb(${c},${c+4},${c+6})`;gravelCtx.beginPath();for(let j=0;j<5;j++){const a=j*Math.PI*2/5,rr=r*(.65+gravelRandom()*.4);gravelCtx.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);}gravelCtx.closePath();gravelCtx.fill();}const gravelTexture=new THREE.CanvasTexture(gravelCanvas);gravelTexture.colorSpace=THREE.SRGBColorSpace;gravelTexture.wrapS=gravelTexture.wrapT=THREE.RepeatWrapping;gravelTexture.repeat.set(5,5);const gravelMat=material(0xffffff);gravelMat.map=gravelTexture;gravelMat.roughness=1;
+const gravelMat=material(0x8b9194);gravelMat.roughness=.95; // Plain carport surface, no gravel texture.
 const gravelWidth=2.55-carportFooting.interiorX,gravelCenterX=(carportFooting.interiorX+2.55)/2;
 const gravelGeo=new THREE.PlaneGeometry(gravelWidth,2.7,1,1);gravelGeo.rotateX(-Math.PI/2);
 const gravelPos=gravelGeo.attributes.position;for(let i=0;i<gravelPos.count;i++)gravelPos.setY(i,terrain.heightAt(2.525-(gravelPos.getX(i)+gravelCenterX)));gravelGeo.computeVertexNormals();
-const gravelSurface=part(gravelGeo,gravelMat,'structure',0,[gravelCenterX,0,2.475],'Gravel carport surface','IMG_5147','Ground falls slightly east to west, as described. The 1.2% visual fall is illustrative; slope has not been measured.',false);
+const gravelSurface=part(gravelGeo,gravelMat,'structure',0,[gravelCenterX,0,2.475],'Carport surface','IMG_5147','Plain carport surface. Ground falls slightly east to west, as described. The 1.2% visual fall is illustrative; slope has not been measured.',false);
 gravelSurface.userData.measurementKind='floor';
 // A separate plan-selection overlay includes the 400 mm inner footing strip.
 // Keep it out of the floor-surface union so the clear-floor measurement stays intact.
@@ -1060,8 +1065,27 @@ function sanitaryRoute(floor,name,points,radius,extra={}){
  route('plumbing',floor,points,radius,wasteMat,name,'P-1 · User correction','Bathroom drains connect to the existing soil stack below the second-floor slab. Upper branches stay on the kitchen side of KT-WE; the Bathroom 1 vent connects to the B1 exterior exhaust. Concealed connections and displayed diameters remain schematic.');
  objects.slice(start).forEach(m=>Object.assign(m.userData,{sanitary:true,routePoints:points,...extra}));sanitaryRoutes.push({floor,name,points,radius,...extra});
 }
+// Bathroom floors: 300 mm tiles, 10 mm thick, laid from the shower corner
+// between the wall faces.
+const wallById=id=>walls.find(w=>w.id===id),tileSize=.30,tileThickness=.01;
+const bathroomTiles=[
+ {floor:0,code:'B0',y:.24,x0:wallById('g-side').a[0]+.075,x1:wallById('g-bath-door').a[0]-.075,z0:wallById('g-bath-rear').a[1]+.075,z1:wallById('g-bath-south').a[1]-.075},
+ {floor:1,code:'B1',y:3.1,x0:wallById('u-bath-side').a[0]+.075,x1:wallById('u-stair').a[0]-.075,z0:wallById('u-rear').a[1]+.075,z1:wallById('u-bath-south').a[1]-.075}
+];
+const tileMat=material(0xe3e7e8);tileMat.roughness=.35;const groutMat=new THREE.LineBasicMaterial({color:0x7f8a90});
+for(const t of bathroomTiles){
+ const w=t.x1-t.x0,d=t.z1-t.z0,cx=(t.x0+t.x1)/2,cz=(t.z0+t.z1)/2,top=tileThickness/2+.0005,points=[];
+ for(let x=t.x0+tileSize;x<t.x1-1e-6;x+=tileSize)points.push(new THREE.Vector3(x-cx,top,-d/2),new THREE.Vector3(x-cx,top,d/2));
+ for(let z=t.z0+tileSize;z<t.z1-1e-6;z+=tileSize)points.push(new THREE.Vector3(-w/2,top,z-cz),new THREE.Vector3(w/2,top,z-cz));
+ const mesh=box('structure',t.floor,cx,t.y+tileThickness/2,cz,w,tileThickness,d,tileMat,`${t.code} · 300 mm floor tiles`,'User request',`300 × 300 mm floor tiles across the ${roomNames[t.code].toLowerCase()} floor, set out from the shower corner. Tile thickness and grout width are approximate.`);
+ mesh.children.forEach(c=>c.visible=false);mesh.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points),groutMat));
+ Object.assign(mesh.userData,{bathroomTiles:true,measurementKind:'floor',tileSize});t.mesh=mesh;
+}
+// Shower floor drains: one per bathroom, centred across the shower area and
+// 450 mm out from the north wall face.
+const showerDrains=[],showerGrateMat=material(0x7c898f,.65),showerDrainRecessMat=material(0x243038);
 for(const[f,x,z]of [[0,.45,-1.9],[1,2.5,-3.5]]){
- const y=f?3.1:.15,wallZ=f?-3.825:-2.275,supplyY=f?2.90:-.08;
+ const y=bathroomTiles[f].y,wallZ=f?-3.825:-2.275,supplyY=f?2.90:-.08;
  freshWater(f,'Bathroom underfloor distribution',[[waterRiser.x,supplyY,waterRiser.z],[waterRiser.x,supplyY,wallZ],[x,supplyY,wallZ]]);
  freshWater(f,'Shower concealed wall supply',[[x,supplyY,wallZ],[x,y+1.95,wallZ],[x,y+1.95,wallZ+.14]],{showerSupply:true,wallId:f?'u-rear':'g-bath-rear'});
  const tx=x+.75;box('plumbing',f,tx,y+.32,z,.4,.45,.56,fixtureMat,'Water closet','P-1','Simplified fixture at an approximate location from the bathroom plan.');box('plumbing',f,tx,y+.62,z-.14,.4,.4,.18,fixtureMat,'Water closet cistern','P-1');
@@ -1070,6 +1094,15 @@ for(const[f,x,z]of [[0,.45,-1.9],[1,2.5,-3.5]]){
  const collector=[collectorX,branchY,z],junction=[sanitaryStack.x,branchY,sanitaryStack.z];
  sanitaryRoute(f,'Bathroom waste branch · 50 mm nominal',[[tx+.55,y+.7,z],[tx+.55,branchY,z],collector],.065,{bathroomWaste:true});
  sanitaryRoute(f,'Soil branch · 100 mm nominal',[[tx,y+.1,z],[tx,branchY,z],collector,[collectorX,branchY,sanitaryStack.z],junction],.075,{bathroomSoil:true});
+ // The shower spans from the wall face to the water closet.
+ const showerX0=bathroomTiles[f].x0,showerX1=tx-.2;
+ const drain={floor:f,x:(showerX0+showerX1)/2,z:wallZ+.075+.45,floorY:y+tileThickness,size:.15};showerDrains.push(drain);
+ const drainNote='Shower floor drain centred in the shower area, set in the tiled floor. It drains through a 50 mm branch to the bathroom collector. Grate size and position are approximate.',drainStart=objects.length;
+ box('plumbing',f,drain.x,drain.floorY+.002,drain.z,drain.size,.002,drain.size,showerDrainRecessMat,'Shower floor drain','User request',drainNote);
+ for(const side of [-1,1]){box('plumbing',f,drain.x+side*(drain.size-.014)/2,drain.floorY+.005,drain.z,.014,.006,drain.size,showerGrateMat,'Shower drain grate · frame','User request',drainNote);box('plumbing',f,drain.x,drain.floorY+.005,drain.z+side*(drain.size-.014)/2,drain.size-.028,.006,.014,showerGrateMat,'Shower drain grate · frame','User request',drainNote);}
+ for(let i=-2;i<=2;i++)box('plumbing',f,drain.x+i*.022,drain.floorY+.005,drain.z,.008,.006,drain.size-.028,showerGrateMat,'Shower drain grate · bar','User request',drainNote);
+ objects.slice(drainStart).forEach(m=>m.userData.showerDrain=true);
+ sanitaryRoute(f,'Shower floor drain branch · 50 mm nominal',[[drain.x,drain.floorY,drain.z],[drain.x,branchY,drain.z],[drain.x,branchY,z],collector],.065,{showerDrain:true});
  for(const [fixtureX,height]of [[tx,.55],[tx+.55,.70]])freshWater(f,'Bathroom fixture supply',[[waterRiser.x,supplyY,wallZ],[fixtureX,supplyY,wallZ],[fixtureX,supplyY,z],[fixtureX,y+height,z]]);
 }
 box('plumbing',0,kitchenCounter.sinkX,1.05,kitchenCounter.sink.z,kitchenCounter.sink.width,.16,kitchenCounter.sink.depth,fixtureMat,'Kitchen sink','A-4 · P-1','Sink contained within the approximate counter footprint used to show the reported 500 mm stair clearance. Sink profile and exact center offset are approximate.');
@@ -1086,7 +1119,18 @@ const westDrainJunction=[siteDrainagePoints[0][0],THREE.MathUtils.lerp(siteDrain
 // Split the existing straight site-drain segment at the new branch connection.
 route('plumbing',0,[siteDrainagePoints[0],westDrainJunction,...siteDrainagePoints.slice(1)],.075,wasteMat,'Site drainage · 100 mm nominal','P-1',pNote);
 const tankMat=material(0x746d9e);tankMat.transparent=true;tankMat.opacity=.38;tankMat.depthWrite=false;
-box('plumbing',0,1.7,-.35,3.0,1.5,.7,2.1,tankMat,'Septic tank','P-1','Simplified 2.10 × 1.50 m tank envelope; depth and exact position are approximate.');
+// The tank roof sits 200 mm below grade so the cleanout riser reaches the surface.
+const septicTank={x:1.7,z:3.0,w:1.5,d:2.1,top:-.2,bottom:-.9};
+box('plumbing',0,septicTank.x,(septicTank.top+septicTank.bottom)/2,septicTank.z,septicTank.w,septicTank.top-septicTank.bottom,septicTank.d,tankMat,'Septic tank','P-1','Simplified 2.10 × 1.50 m tank envelope; depth and exact position are approximate.');
+// Maintenance cleanout: a riser from the tank roof over the inlet end, closed
+// by a removable cover flush with the carport surface.
+const septicCleanout={x:septicTank.x+.25,z:septicTank.z-septicTank.d/2+.45,size:.50,cover:.60};
+septicCleanout.surfaceY=terrain.heightAt(2.525-septicCleanout.x);
+const cleanoutNote='Septic tank maintenance cleanout over the inlet end: a 500 mm concrete riser from the tank roof to the carport surface, closed by a 600 mm removable cover with lifting handles. Position and size are approximate.';
+const cleanoutMat=material(0x9aa3a8),coverMat=material(0x4d5559,.55),handleMat=material(0x7c898f,.65);
+box('plumbing',0,septicCleanout.x,(septicTank.top+septicCleanout.surfaceY)/2-.01,septicCleanout.z,septicCleanout.size,septicCleanout.surfaceY-septicTank.top+.02,septicCleanout.size,cleanoutMat,'Septic tank cleanout riser','User request',cleanoutNote).userData.septicCleanout=true;
+box('plumbing',0,septicCleanout.x,septicCleanout.surfaceY+.012,septicCleanout.z,septicCleanout.cover,.025,septicCleanout.cover,coverMat,'Septic tank cleanout cover','User request',cleanoutNote).userData.septicCleanout=true;
+for(const side of [-1,1])box('plumbing',0,septicCleanout.x+side*.18,septicCleanout.surfaceY+.03,septicCleanout.z,.12,.012,.03,handleMat,'Cleanout cover lifting handle','User request',cleanoutNote).userData.septicCleanout=true;
 route('plumbing',0,[[1.95,-.4,3.9],[1.95,-.5,5.6]],.075,wasteMat,'Sanitary outlet to sewer','P-1',pNote);
 // Both front catch basins stay inside the plot and use the same concrete form.
 // Owner-observed 3 in downpipe; displayed at its 76.2 mm nominal diameter.
@@ -1124,7 +1168,10 @@ const upperSoilExhaustPoints=[[upperSanitaryX,upperSoilExit.y,upperSoilExit.z],[
 const upperSoilExhaust=part(new THREE.TubeGeometry(roundedPipe(upperSoilExhaustPoints),8,upperSoilExit.radius,12,false),wasteMat,'plumbing',1,[0,0,0],'Soil pipe exhaust · B1-EE','User correction','Additional soil-pipe exhaust through B1-EE beside the upper downpipe elbow. Shown at the elbow height, 250 mm toward the south along the wall. The spacing, 300 mm exterior projection and displayed diameter are approximate; its interior vent joins the Bathroom 1 soil branch below the slab.',false);
 Object.assign(upperSoilExhaust.userData,{soilExhaust:true,additionalSoilExhaust:true,wallCode:upperSoilExit.wallCode,wallId:upperSoilExit.wallId,routePoints:upperSoilExhaustPoints,outletDirection:[-1,0,0]});
 const upperSoilBranch=sanitaryRoutes.find(r=>r.floor===1&&r.bathroomSoil);
-const upperVentPoints=[upperSoilBranch.points[2],[upperSanitaryX,sanitaryStack.upperBranchY,upperSoilExit.z],upperSoilExhaustPoints[0]];
+// The vent rises in the B1 northwest corner (beside B1-EE and the north wall),
+// then runs along B1-EE at exit height to the observed wall penetration.
+const upperVentCornerZ=bathroomTiles[1].z0+upperSoilExit.radius+.03;
+const upperVentPoints=[upperSoilBranch.points[2],[upperSanitaryX,sanitaryStack.upperBranchY,upperVentCornerZ],[upperSanitaryX,upperSoilExit.y,upperVentCornerZ],upperSoilExhaustPoints[0]];
 sanitaryRoute(1,'Bathroom 1 soil vent · connects to B1 exhaust',upperVentPoints,upperSoilExit.radius,{bathroomVent:true});
 // East-roof outlet drops on BL-NI beside its east corner, then turns only
 // after passing through the balcony slab to the existing CP-EI downpipe.
@@ -1368,7 +1415,7 @@ const measurements=createMeasurements(scene);
 let selected=null,measurementTarget=null;
 let initialInfo=document.querySelector('#selection').innerHTML;
 function updateOverview(){
- const u=activeUnit();initialInfo=state.scope==='block'?`<span class="eyebrow">BLOCK OVERVIEW</span><h3>${state.showRearUnits?'8 units · Two rows of four':'4 of 8 units · Front row'}</h3><p>${block.area.toFixed(0)} m² total · Minimum lots · Back-to-back rows</p><div class="card-footer">Select a house or unit button to focus its controls</div>`:`<span class="eyebrow">UNIT ${u.id} OVERVIEW</span><h3>${u.width} × ${u.depth} m lot · ${u.area.toFixed(2)} m²</h3><p>${u.end?'End lot · '+u.sideClearance.toFixed(2)+' m '+u.openSide+' clearance':'Inner lot · Both sides adjoining'}<br>${u.frontDirection==='south'?'South':'North'}-facing · ${u.rearAdjoining?'Rear adjoining':u.rearSpace.toFixed(2)+' m rear space'} · ${u.frontClearance.toFixed(2)} m front</p><div class="card-footer">Select a surface to see measurements</div>`;
+ const u=activeUnit();initialInfo=state.scope==='block'?`<span class="eyebrow">BLOCK OVERVIEW</span><h3>${state.showRearUnits?'8 units · Two rows of four':'4 of 8 units · Front row'}</h3><p>Back-to-back rows</p><div class="card-footer">Select a house or unit button to focus its controls</div>`:`<span class="eyebrow">UNIT ${u.id} OVERVIEW</span><h3>${u.width} × ${u.depth} m lot · ${u.area.toFixed(2)} m²</h3><p>${u.end?'End lot · '+u.sideClearance.toFixed(2)+' m '+u.openSide+' clearance':'Inner lot · Both sides adjoining'}<br>${u.frontDirection==='south'?'South':'North'}-facing · ${u.rearAdjoining?'Rear adjoining':u.rearSpace.toFixed(2)+' m rear space'} · ${u.frontClearance.toFixed(2)} m front</p><div class="card-footer">Select a surface to see measurements</div>`;
 }
 
 function clearSelection(){measurements.clear();measurementTarget=null;selected=null;document.querySelector('#selection').dataset.selected='false';document.querySelector('#selection').innerHTML=initialInfo;}
@@ -1617,10 +1664,28 @@ const planCamera2d={box:null,fit:null,key:''};
 // keeps 500 mm clear of the first stair step.
 const planFixtures=[{floor:0,label:'Counter',x0:kitchenCounter.startX,x1:kitchenCounter.endX,z0:kitchenCounter.rearZ,z1:kitchenCounter.frontZ,walls:{x0:true,z0:true},
  sink:{x0:kitchenCounter.sinkX-kitchenCounter.sink.width/2,x1:kitchenCounter.sinkX+kitchenCounter.sink.width/2,z0:kitchenCounter.sink.z-kitchenCounter.sink.depth/2,z1:kitchenCounter.sink.z+kitchenCounter.sink.depth/2},
- clearance:{x1:stair.bottomStartX,label:'Stair',outline:{x0:stair.bottomStartX,x1:stair.bottomStartX+stair.bottomGoing,z0:stair.turn.z-stair.width/2,z1:stair.turn.z+stair.width/2}}}];
+ clearance:{x1:stair.bottomStartX}}];
+// Tread outlines in plan, in climbing order. The ground plan cuts the flight
+// about 1.2 m above the floor; the second floor sees the whole flight below.
+const stairTreads=objects.filter(m=>m.userData.stairTread).sort((a,b)=>a.userData.stairTread-b.userData.stairTread).map(m=>{
+ if(m.userData.polygon)return {number:m.userData.stairTread,polygon:m.userData.polygon};
+ const {width,depth}=m.geometry.parameters,[x,z]=[m.position.x,m.position.z];
+ return {number:m.userData.stairTread,polygon:[[x-width/2,z-depth/2],[x+width/2,z-depth/2],[x+width/2,z+depth/2],[x-width/2,z+depth/2]]};
+});
+const stairCut=stairTreads.filter(t=>.25+t.number*stair.riser<=.25+1.2).length,mainFlight=stairTreads.filter(t=>objects.find(m=>m.userData.stairTread===t.number).userData.stairFlight==='main');
+const flightRun={z0:mainFlight[0].polygon[0][1],z1:mainFlight.at(-1).polygon[2][1]},stairNoteText=`${stairTreads.length+1} risers · ${Math.round(stair.riser*1000)} mm`;
+const stairDims=[{a:[mainInnerX,flightRun.z0+.12],b:[mainInnerX+stair.width,flightRun.z0+.12],out:[0,1]},{a:[mainInnerX+.12,flightRun.z0],b:[mainInnerX+.12,flightRun.z1],out:[1,0]}];
+// From the second floor only treads in the stair opening show; the rest sit
+// below the upper bathroom and landing slab.
+const upperSlabs=objects.filter(m=>m.userData.measurementKind==='floor'&&m.userData.floor===1).map(floorSurfaceBounds);
+const openTreads=stairTreads.filter(t=>{const x=t.polygon.reduce((s,p)=>s+p[0],0)/t.polygon.length,z=t.polygon.reduce((s,p)=>s+p[1],0)/t.polygon.length;return !upperSlabs.some(b=>x>b.x0&&x<b.x1&&z>b.z0&&z<b.z1);});
+const planStairs=[{floor:0,treads:stairTreads,cut:stairCut,direction:'up',dims:stairDims,note:{at:[stair.turn.x+.15,(flightRun.z0+flightRun.z1)/2],along:[0,1],text:stairNoteText}},
+ {floor:1,treads:openTreads,direction:'down',dims:stairDims,note:{at:[stair.turn.x+.15,(flightRun.z0+flightRun.z1)/2],along:[0,1],text:stairNoteText}}];
 function planRooms(){
  const surfaces=objects.filter(m=>m.userData.measurementKind==='floor').map(floorSurfaceBounds);
- const rooms=buildRoomFloorPlans(walls,wallBaseSurfaces,surfaces).map(r=>({...r,name:roomNames[r.code]}));
+ // The carport's clear floor stops at the inner footing; the secondary extent
+ // includes the 400 mm footing strip up to the wall face.
+ const rooms=buildRoomFloorPlans(walls,wallBaseSurfaces,surfaces).map(r=>({...r,name:roomNames[r.code],...(r.code==='CP'?{secondary:{...carportAreaBounds,label:'incl. footing'}}:{})}));
  rooms.push({code:'SA',name:'Service area',floor:0,regions:[floorSurfaceBounds(serviceFloorMesh)]});
  return rooms;
 }
@@ -1632,7 +1697,7 @@ function renderPlan(){
  const project=([x,z])=>{const p=root.localToWorld(new THREE.Vector3(x,0,z));return [p.x,p.z];};
  const openings=reviewedOpenings.filter(o=>u.end||!['guest-side','master-side'].includes(o.id)),rooms=planRooms();
  const floors=state.level==='all'?[0,1]:[Number(state.level)];
- const rendered=renderFloorPlans(floors.map(f=>({title:f?'Second floor':'Ground floor',plan:buildFloorPlan({walls,faces:wallBaseSurfaces,openings,rooms,fixtures:planFixtures,floor:f})})),project,state.planMode);
+ const rendered=renderFloorPlans(floors.map(f=>({title:f?'Second floor':'Ground floor',plan:buildFloorPlan({walls,faces:wallBaseSurfaces,openings,rooms,fixtures:planFixtures,stairs:planStairs,floor:f})})),project,state.planMode);
  const {svg,viewBox}=rendered;planCamera2d.rendered=rendered;
  planSvg.innerHTML=`<style>${planStyles}</style>`+svg;
  const key=`${u.id}:${state.level}:${u.width}:${u.depth}`;
@@ -1699,7 +1764,7 @@ function selectPlanRoom(code,floor){
  const clear={x0:Math.min(...room.regions.map(g=>g.x0)),x1:Math.max(...room.regions.map(g=>g.x1)),z0:Math.min(...room.regions.map(g=>g.z0)),z1:Math.max(...room.regions.map(g=>g.z1))};
  const [cw,cd]=span(clear),[ow,od]=span(room.bounds??clear),area=room.regions.reduce((s,g)=>{const [w,d]=span(g);return s+w*d;},0);
  card.dataset.selected='true';
- card.innerHTML=`<span class="eyebrow">FLOOR PLAN · ${room.floor?'SECOND':'GROUND'} FLOOR</span><h3></h3><p class="measurement-summary">Clear ${formatMetres(cw)} × ${formatMetres(cd)} m<br>Including walls ${formatMetres(ow)} × ${formatMetres(od)} m<br><small>Clear area ${area.toFixed(2)} m² · ${room.regions.length} region${room.regions.length>1?'s':''}</small></p><p>Clear dimensions run between wall faces and exclude wall footprints. Including-walls dimensions run to wall centrelines, so each bounding wall adds half its 150 mm thickness. Open-plan edges use the room's span divisions.</p><div class="card-footer">Unit ${u.id} · select another room or press Escape</div>`;
+ card.innerHTML=`<span class="eyebrow">FLOOR PLAN · ${room.floor?'SECOND':'GROUND'} FLOOR</span><h3></h3><p class="measurement-summary">Clear ${formatMetres(cw)} × ${formatMetres(cd)} m<br>Including walls ${formatMetres(ow)} × ${formatMetres(od)} m<br>${room.secondary?`Clear ${room.secondary.label} ${formatMetres(span(room.secondary)[0])} × ${formatMetres(span(room.secondary)[1])} m<br>`:''}<small>Clear area ${area.toFixed(2)} m² · ${room.regions.length} region${room.regions.length>1?'s':''}</small></p><p>Clear dimensions run between wall faces and exclude wall footprints. Including-walls dimensions run to wall centrelines, so each bounding wall adds half its 150 mm thickness. Open-plan edges use the room's span divisions.</p><div class="card-footer">Unit ${u.id} · select another room or press Escape</div>`;
  card.querySelector('h3').textContent=`${room.code} · ${room.name}`;
 }
 planToggle.onclick=()=>{state.plan=!state.plan;planCamera2d.room=null;clearSelection();sync();if(state.plan){planCamera2d.box=null;applyPlanBox();planSvg.focus();}};
@@ -1719,5 +1784,5 @@ new ResizeObserver(()=>{if(state.plan&&planCamera2d.fit){planCamera2d.box=null;a
 const modelContext=document.modelContext;
 if(modelContext?.registerTool){const lifecycle=new AbortController();const tool={name:'configure_building_view',title:'Configure the building view',description:'Show chosen building systems and select a floor in the visible 3D model.',inputSchema:{type:'object',properties:{systems:{type:'array',items:{type:'string',enum:defs.map(d=>d[0])},uniqueItems:true},floor:{type:'string',enum:['all','0','1']}},required:['systems'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input){if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['systems','floor'].includes(k))||!Array.isArray(input.systems)||input.systems.some(id=>!defs.some(d=>d[0]===id))||new Set(input.systems).size!==input.systems.length||(input.floor!==undefined&&!['all','0','1'].includes(input.floor)))throw new Error('Choose valid systems and floor.');for(const id in state.layers)state.layers[id]=input.systems.includes(id);if(input.floor!==undefined)state.level=input.floor;clearSelection();sync();return {visibleSystems:defs.filter(d=>state.layers[d[0]]).map(d=>d[0]),floor:state.level};}};try{Promise.resolve(modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});}
 function resize(){const {width,height}=viewport.getBoundingClientRect();if(width<=0||height<=0)return;renderer.setSize(width,height,false);perspectiveCamera.aspect=width/height;perspectiveCamera.updateProjectionMatrix();const u=activeUnit(),bounds=state.scope==='block'?blockViewBounds():u;const span=Math.max(16,(bounds.depth+3),((bounds.width+3)/(width/height)));planCamera.left=-span*(width/height)/2;planCamera.right=-planCamera.left;planCamera.top=span/2;planCamera.bottom=-span/2;planCamera.updateProjectionMatrix();}new ResizeObserver(resize).observe(viewport);resize();setView('iso');sync();renderer.setAnimationLoop(()=>{controls.update();sizeSiteLabels();measurements.resize(camera,viewport.clientHeight,viewport.clientWidth);renderer.render(scene,camera);});
-window.townhouse={entryCanopy,renderPlan,planRooms,conduitSpec,ceilingPlans,kitchenSoffit,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
+window.townhouse={bathroomTiles,showerDrains,septicTank,septicCleanout,planStairs,entryCanopy,renderPlan,planRooms,conduitSpec,ceilingPlans,kitchenSoffit,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();document.querySelector('#error').hidden=false;});

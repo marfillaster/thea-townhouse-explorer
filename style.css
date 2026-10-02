@@ -112,7 +112,7 @@ main.sidebar-collapsed #workspace{width:100%}
 .plan-legend{position:absolute;left:18px;bottom:14px;display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;color:var(--muted);pointer-events:none}
 .plan-legend span{display:flex;align-items:center;gap:6px}
 .plan-legend i{display:inline-block;width:18px;height:2px}
-.key-overall{background:#ffcc80}.key-clear{background:#76dfca}.key-wall{background:#7d8c9c;height:6px!important}
+.key-overall{background:#ffcc80}.key-clear{background:#76dfca}.key-wall{background:#7d8c9c;height:6px!important}.key-door{background:#dfa886}
 #plan-toggle.active{background:#354657;color:var(--mint)}
 #plan-toggle:disabled{opacity:.4}
 @media(max-width:700px){.plan-toolbar{top:62px;right:10px;left:10px;justify-content:space-between}.plan-legend{left:10px;bottom:8px;font-size:10px}.header-actions #plan-toggle span{display:none}}

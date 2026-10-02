@@ -40,7 +40,7 @@ export function planOpenings(walls,faces,openings,floor){
 export function planRooms(rooms,floor){
  return rooms.filter(r=>r.floor===floor).map(r=>{
   const clear={x0:Math.min(...r.regions.map(g=>g.x0)),x1:Math.max(...r.regions.map(g=>g.x1)),z0:Math.min(...r.regions.map(g=>g.z0)),z1:Math.max(...r.regions.map(g=>g.z1))};
-  return {code:r.code,name:r.name,regions:r.regions,overall:r.bounds??clear,clear,area:r.regions.reduce((s,g)=>s+(g.x1-g.x0)*(g.z1-g.z0),0)};
+  return {code:r.code,name:r.name,regions:r.regions,overall:r.bounds??clear,clear,secondary:r.secondary,area:r.regions.reduce((s,g)=>s+(g.x1-g.x0)*(g.z1-g.z0),0)};
  });
 }
 
@@ -71,15 +71,25 @@ export function exteriorChains(walls,faces,floor){
  return chains;
 }
 
-export function buildFloorPlan({walls,faces,openings,rooms,fixtures=[],floor}){
- return {floor,fixtures:fixtures.filter(f=>f.floor===floor),walls:planWallSolids(walls,openings,floor),openings:planOpenings(walls,faces,openings,floor),rooms:planRooms(rooms,floor),chains:exteriorChains(walls,faces,floor)};
+export function buildFloorPlan({walls,faces,openings,rooms,fixtures=[],stairs=[],floor}){
+ return {floor,fixtures:fixtures.filter(f=>f.floor===floor),stairs:stairs.filter(t=>t.floor===floor),walls:planWallSolids(walls,openings,floor),openings:planOpenings(walls,faces,openings,floor),rooms:planRooms(rooms,floor),chains:exteriorChains(walls,faces,floor)};
 }
 
 // Plan styles live with the renderer so exported files carry them.
 export const planStyles=`.plan-caption{fill:#98a8ba;font-size:.2px}
 .plan-fixture{fill:#3a4a5c;stroke:#c3cdd8;stroke-width:1;vector-effect:non-scaling-stroke}
 .plan-sink{fill:#2a3a4c;stroke:#65bafa;stroke-width:1;vector-effect:non-scaling-stroke}
-.plan-step{fill:none;stroke:#98a8ba;stroke-width:1;stroke-dasharray:2 2;vector-effect:non-scaling-stroke}
+.plan-tread{fill:#2b3b4d;stroke:#c3cdd8;stroke-width:1;vector-effect:non-scaling-stroke}
+.plan-tread.above-cut{fill:none;stroke:#7d8c9c;stroke-dasharray:3 2}
+.plan-break{fill:none;stroke:#e7eef5;stroke-width:1.2;vector-effect:non-scaling-stroke}
+.plan-walk{fill:none;stroke:#e7eef5;stroke-width:1;vector-effect:non-scaling-stroke}
+.plan-walk-head,.plan-walk-start{fill:#e7eef5}
+.stair-label{fill:#e7eef5;font-size:.12px;font-weight:600;text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:#0d1724;stroke-width:.04px}
+.stair-note{fill:#98a8ba;font-size:.1px;text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:#0d1724;stroke-width:.04px}
+.room-secondary{fill:none;stroke:#76dfca;stroke-width:1;stroke-dasharray:2 3;vector-effect:non-scaling-stroke;opacity:.6;pointer-events:none}
+.dim-secondary path{stroke-dasharray:4 2}.dim-secondary .dim-text{font-style:italic}
+.dim-door path{stroke:#dfa886}.dim-door .dim-text{fill:#dfa886}
+.dim-stair path{stroke:#c3cdd8}.dim-stair .dim-text{fill:#c3cdd8}
 .fixture-label{fill:#c3cdd8;font-size:.11px;text-anchor:middle;dominant-baseline:middle;pointer-events:none}
 .plan-title{fill:#e7eef5;font-size:.42px;font-weight:600;letter-spacing:.02em}
 .plan-wall{fill:#7d8c9c;stroke:none}
@@ -124,7 +134,10 @@ export function renderFloorPlans(entries,project,mode='both'){
   layout.push({floor:plan.floor,x0:box.x0+dx,x1:box.x1+dx,y0:box.y0,y1:box.y1});
   const dims=[];
   // Fixture zones cover a fixture, its clearance outline and its dimension rows.
-  const zones=plan.fixtures.map(f=>{const o=f.clearance?.outline;return {x0:Math.min(f.x0,o?.x0??f.x0)-.05,x1:Math.max(f.x1,o?.x1??f.x1)+.05,z0:Math.min(f.z0,o?.z0??f.z0)-.05,z1:Math.max(f.z1,o?.z1??f.z1)+.65};});
+  const zones=[...plan.fixtures.map(f=>{const o=f.clearance?.outline;return {x0:Math.min(f.x0,o?.x0??f.x0)-.05,x1:Math.max(f.x1,o?.x1??f.x1,f.clearance?.x1??f.x1)+.05,z0:Math.min(f.z0,o?.z0??f.z0)-.05,z1:Math.max(f.z1,o?.z1??f.z1)+.65};}),
+   // Doors: the leaf's sweep on one side, the opening dimension on the other.
+   ...plan.openings.filter(o=>o.kind==='door').map(o=>{const pts=[o.start,o.end].flatMap(p=>[[p[0]-o.normal[0]*(HALF+.4),p[1]-o.normal[1]*(HALF+.4)],[p[0]+o.normal[0]*(HALF+o.width),p[1]+o.normal[1]*(HALF+o.width)]]);return {x0:Math.min(...pts.map(p=>p[0])),x1:Math.max(...pts.map(p=>p[0])),z0:Math.min(...pts.map(p=>p[1])),z1:Math.max(...pts.map(p=>p[1])),weight:2};}),
+   ...plan.stairs.map(t=>{const pts=t.treads.flatMap(r=>r.polygon);return {x0:Math.min(...pts.map(p=>p[0]))-.05,x1:Math.max(...pts.map(p=>p[0]))+.05,z0:Math.min(...pts.map(p=>p[1]))-.05,z1:Math.max(...pts.map(p=>p[1]))+.05,weight:2};})];
   parts.push(`<g class="plan-floor" data-floor="${plan.floor}">`);
   parts.push(`<text class="plan-title" x="${fmt(box.x0+dx)}" y="${fmt(box.y0-2.75)}">${esc(title)}</text>`);
   for(const room of plan.rooms){
@@ -136,20 +149,53 @@ export function renderFloorPlans(entries,project,mode='both'){
    // Room dimension text sits 0.06-0.20 m inside its line. Pull the lines toward
    // the walls so that text clears the centred label; small rooms show only
    // their code (the area stays in the selection card).
-   const c=room.clear,o=room.overall,width=c.x1-c.x0,depth=c.z1-c.z0,fits=(w,h)=>Math.min((width-w)/2,(depth-h)/2)>=.31;
+   const c=room.clear,o=room.overall,width=c.x1-c.x0,depth=c.z1-c.z0,fits=(w,h)=>Math.min((big.x1-big.x0-w)/2,(big.z1-big.z0-h)/2)>=.31;
    const full=fits(Math.max(room.code.length*.12,area.length*.068),.46),label=full?{w:Math.max(room.code.length*.12,area.length*.068),h:.46}:{w:room.code.length*.12,h:.22};
    const insetX=Math.max(.1,Math.min(.3,(width-label.w)/2-.23)),insetZ=Math.max(.1,Math.min(.3,(depth-label.h)/2-.23));
    parts.push(full?`<text class="room-label" x="${fmt(cx)}" y="${fmt(cy)}"><tspan x="${fmt(cx)}" dy="-.09" class="room-name">${esc(room.code)}</tspan><tspan x="${fmt(cx)}" dy=".24" class="room-size">${area}</tspan></text></g>`:`<text class="room-label" x="${fmt(cx)}" y="${fmt(cy)}"><tspan class="room-name">${esc(room.code)}</tspan></text></g>`);
    // Clear dimensions run along the north and east inner faces; overall
    // (centreline) dimensions along the south and west, over the walls.
-   // Step a room dimension line clear of any fixture zone it would cross.
-   const clearOf=(value,axis,dir,lo,hi)=>{for(const z of zones)if(value>z[axis+'0']-EPS&&value<z[axis+'1']+EPS&&lo<z[(axis==='x'?'z':'x')+'1']&&hi>z[(axis==='x'?'z':'x')+'0'])value=dir>0?z[axis+'1']+.3:z[axis+'0']-.3;return value;};
-   const north=clearOf(c.z0+insetZ,'z',1,c.x0,c.x1),south=clearOf(c.z1-insetZ,'z',-1,c.x0,c.x1),east=clearOf(c.x1-insetX,'x',-1,c.z0,c.z1),west=clearOf(c.x0+insetX,'x',1,c.z0,c.z1);
-   if(show.clear)dims.push(dimension([c.x0,north],[c.x1,north],[0,1],0,P,'dim-clear',false),dimension([east,c.z0],[east,c.z1],[-1,0],0,P,'dim-clear',false));
+   // Place each room dimension line where it crosses the least fixture or
+   // stair area, preferring its usual spot and keeping lines apart.
+   // The room's own label counts as an obstacle, padded for dimension text.
+   const bx=(big.x0+big.x1)/2,bz=(big.z0+big.z1)/2,obstacles=[...zones,{x0:bx-label.w/2-.22,x1:bx+label.w/2+.22,z0:bz-label.h/2-.22,z1:bz+label.h/2+.22,weight:8,core:{x0:bx-label.w/2,x1:bx+label.w/2,z0:bz-label.h/2,z1:bz+label.h/2}}];
+   const taken={x:[],z:[]},place=(axis,pref,lo,hi)=>{
+    const other=axis==='x'?'z':'x',min=c[axis+'0']+.1,max=c[axis+'1']-.1;let best=pref,cost=Infinity;
+    for(let v=min;v<=max+EPS;v+=.05){
+     let blocked=0;for(const z of obstacles)if(v>z[axis+'0']&&v<z[axis+'1'])blocked+=(z.weight??1)*Math.max(0,Math.min(hi,z[other+'1'])-Math.max(lo,z[other+'0']));
+     const k=blocked+.02*Math.abs(v-pref)+(taken[axis].some(t=>Math.abs(t-v)<.5)?50:0);if(k<cost-EPS){cost=k;best=v;}
+    }
+    taken[axis].push(best);return best;
+   };
+   // Centre the label in the longest stretch of the line free of obstacles.
+   // side is the direction the text sits from its line (+1 or -1 on axis).
+   const textT=(axis,v,a,b,side)=>{
+    const t0=Math.min(v+side*.06,v+side*.2),t1=Math.max(v+side*.06,v+side*.2);
+    const other=axis==='x'?'z':'x',lo=Math.min(a,b),hi=Math.max(a,b),cuts=obstacles.map(z=>z.core??z).filter(z=>t1>z[axis+'0']&&t0<z[axis+'1']).map(z=>[Math.max(lo,z[other+'0']-.05),Math.min(hi,z[other+'1']+.05)]).filter(([p,q])=>q>p).sort((p,q)=>p[0]-q[0]);
+    let start=lo,best=[lo,hi],size=-1;for(const [p,q] of [...cuts,[hi,hi]]){if(p-start>size){size=p-start;best=[start,p];}start=Math.max(start,q);}
+    return size<.35?.5:((best[0]+best[1])/2-a)/(b-a);
+   };
+   // Horizontal lines go first; their labels then become obstacles for the
+   // vertical lines and labels.
+   const labelBox=(z,x,dir)=>obstacles.push({x0:x-.3,x1:x+.3,z0:Math.min(z,z+dir*.25),z1:Math.max(z,z+dir*.25),weight:4});
+   const north=place('z',c.z0+insetZ,c.x0,c.x1),tNorth=textT('z',north,c.x0,c.x1,1);labelBox(north,c.x0+(c.x1-c.x0)*tNorth,1);
+   const south=place('z',c.z1-insetZ,c.x0,c.x1),tSouth=textT('z',south,o.x0,o.x1,-1);labelBox(south,o.x0+(o.x1-o.x0)*tSouth,-1);
+   const east=place('x',c.x1-insetX,c.z0,c.z1),tEast=textT('x',east,c.z0,c.z1,-1),ez=c.z0+(c.z1-c.z0)*tEast;
+   obstacles.push({x0:east-.25,x1:east,z0:ez-.3,z1:ez+.3,weight:4});
+   const west=place('x',c.x0+insetX,c.z0,c.z1);
+   // A secondary clear extent (e.g. the carport including its inner footing)
+   // gets its own outline and width/depth lines where they differ from clear.
+   const sec=room.secondary;
+   if(show.clear&&sec){
+    parts.push(rect(sec,P,'room-secondary'));
+    if(Math.abs(sec.x1-sec.x0-width)>EPS){const z=place('z',north+.35,sec.x0,sec.x1),t=textT('z',z,sec.x0,sec.x1,1),x=sec.x0+(sec.x1-sec.x0)*t;obstacles.push({x0:x-.6,x1:x+.6,z0:z,z1:z+.25,weight:4});dims.push(dimension([sec.x0,z],[sec.x1,z],[0,1],0,P,'dim-clear dim-secondary',false,true,' '+sec.label,t));}
+    if(Math.abs(sec.z1-sec.z0-depth)>EPS){const x=place('x',east-.35,sec.z0,sec.z1);dims.push(dimension([x,sec.z0],[x,sec.z1],[-1,0],0,P,'dim-clear dim-secondary',false,true,' '+sec.label));}
+   }
+   if(show.clear)dims.push(dimension([c.x0,north],[c.x1,north],[0,1],0,P,'dim-clear',false,true,'',tNorth),dimension([east,c.z0],[east,c.z1],[-1,0],0,P,'dim-clear',false,true,'',tEast));
    // Skip an overall dimension that repeats the clear one (no bounding walls).
    const same=(a0,a1,b0,b1)=>show.clear&&Math.abs(a0-b0)<EPS&&Math.abs(a1-b1)<EPS;
-   if(show.overall&&!same(o.x0,o.x1,c.x0,c.x1))dims.push(dimension([o.x0,south],[o.x1,south],[0,-1],0,P,'dim-overall',false));
-   if(show.overall&&!same(o.z0,o.z1,c.z0,c.z1))dims.push(dimension([west,o.z0],[west,o.z1],[1,0],0,P,'dim-overall',false));
+   if(show.overall&&!same(o.x0,o.x1,c.x0,c.x1))dims.push(dimension([o.x0,south],[o.x1,south],[0,-1],0,P,'dim-overall',false,true,'',tSouth));
+   if(show.overall&&!same(o.z0,o.z1,c.z0,c.z1))dims.push(dimension([west,o.z0],[west,o.z1],[1,0],0,P,'dim-overall',false,true,'',textT('x',west,o.z0,o.z1,1)));
   }
   for(const w of plan.walls)parts.push(rect(w,P,'plan-wall'));
   for(const o of plan.openings){
@@ -161,15 +207,16 @@ export function renderFloorPlans(entries,project,mode='both'){
     const hinge=[a[0]+n[0]*HALF,a[1]+n[1]*HALF],leaf=[hinge[0]+n[0]*o.width,hinge[1]+n[1]*o.width],arc=[];
     for(let i=0;i<=12;i++){const t=i/12*Math.PI/2,c=Math.cos(t),s=Math.sin(t);arc.push(P([hinge[0]+(n[0]*c+o.direction[0]*s)*o.width,hinge[1]+(n[1]*c+o.direction[1]*s)*o.width]));}
     parts.push(line(hinge,leaf,P,'plan-door'),`<polyline class="plan-swing" points="${arc.map(p=>p.map(fmt).join(',')).join(' ')}"/>`);
+    // Clear opening width, jamb to jamb, on the side away from the swing.
+    const off=HALF+.2;dims.push(dimension([a[0]-n[0]*off,a[1]-n[1]*off],[b[0]-n[0]*off,b[1]-n[1]*off],[-n[0],-n[1]],0,P,'dim-door',false));
    }
   }
-  // Fixtures: a counter (with sink) and the outline it keeps clear of. Clear
+  // Fixtures: a counter (with sink) and the clearance it keeps. Clear
   // dimensions start at the wall face it stands on; overall ones at the wall
   // centreline. Length and the clearance gap share a row along the front edge.
   for(const f of plan.fixtures){
    parts.push(rect(f,P,'plan-fixture'));
    if(f.sink)parts.push(rect(f.sink,P,'plan-sink'));
-   if(f.clearance?.outline){const o=f.clearance.outline;parts.push(rect(o,P,'plan-step'));const [tx,ty]=P([(o.x0+o.x1)/2,(o.z0+o.z1)/2]);parts.push(`<text class="fixture-label" x="${fmt(tx)}" y="${fmt(ty)}">${esc(f.clearance.label)}</text>`);}
    const [lx,ly]=P([(f.x0+f.x1)/2,(f.z0+f.z1)/2]);parts.push(`<text class="fixture-label" x="${fmt(lx)}" y="${fmt(ly)}">${esc(f.label)}</text>`);
    const overall={x0:f.x0-(f.walls?.x0?HALF:0),z0:f.z0-(f.walls?.z0?HALF:0)},rows=[];
    if(show.clear)rows.push({cls:'dim-clear',x0:f.x0,z0:f.z0,gap:true});
@@ -180,6 +227,24 @@ export function renderFloorPlans(entries,project,mode='both'){
     if(row.gap&&f.clearance)dims.push(dimension([f.x1,z],[f.clearance.x1,z],[0,1],0,P,row.cls,false));
     dims.push(dimension([x,row.z0],[x,f.z1],[1,0],0,P,row.cls,false));
    });
+  }
+  // Stairs: treads past the cut plane are dashed behind a break line; the
+  // walking line runs from the first tread with UP, or from the top with DN.
+  for(const t of plan.stairs){
+   const cut=t.cut??Infinity;
+   for(const r of t.treads)parts.push(`<polygon class="plan-tread${r.number>cut?' above-cut':''}" points="${r.polygon.map(P).map(p=>p.map(fmt).join(',')).join(' ')}"/>`);
+   if(Number.isFinite(cut)){const r=t.treads.find(r=>r.number===cut+1);if(r){const xs=r.polygon.map(p=>p[0]),zs=r.polygon.map(p=>p[1]),[x0,x1,z0,z1]=[Math.min(...xs),Math.max(...xs),Math.min(...zs),Math.max(...zs)],m=[(x0+x1)/2,(z0+z1)/2];
+    const zig=[[x0,z1],[m[0]-.06,m[1]+.02],[m[0]+.04,m[1]+.12],[m[0]-.04,m[1]-.12],[m[0]+.06,m[1]-.02],[x1,z0]].map(P);parts.push(`<polyline class="plan-break" points="${zig.map(p=>p.map(fmt).join(',')).join(' ')}"/>`);}}
+   const centroid=poly=>[poly.reduce((s,p)=>s+p[0],0)/poly.length,poly.reduce((s,p)=>s+p[1],0)/poly.length];
+   let walk=t.treads.filter(r=>r.number<=cut+(Number.isFinite(cut)?.5:0)).map(r=>centroid(r.polygon));if(t.direction==='down')walk=walk.reverse();
+   if(walk.length>1){
+    const pts=walk.map(P),[p,q]=[pts.at(-2),pts.at(-1)],l=Math.hypot(q[0]-p[0],q[1]-p[1]),u=[(q[0]-p[0])/l,(q[1]-p[1])/l],h=.12;
+    parts.push(`<polyline class="plan-walk" points="${pts.map(p=>p.map(fmt).join(',')).join(' ')}"/><polygon class="plan-walk-head" points="${[q,[q[0]-u[0]*h-u[1]*h*.5,q[1]-u[1]*h+u[0]*h*.5],[q[0]-u[0]*h+u[1]*h*.5,q[1]-u[1]*h-u[0]*h*.5]].map(p=>p.map(fmt).join(',')).join(' ')}"/>`);
+    parts.push(`<circle class="plan-walk-start" cx="${fmt(pts[0][0])}" cy="${fmt(pts[0][1])}" r=".04"/><text class="stair-label" x="${fmt(pts[0][0])}" y="${fmt(pts[0][1]+.17)}">${t.direction==='down'?'DN':'UP'}</text>`);
+   }
+   if(t.note){const [x,y]=P(t.note.at),[x2,y2]=P([t.note.at[0]+(t.note.along?.[0]??1),t.note.at[1]+(t.note.along?.[1]??0)]);let angle=Math.atan2(y2-y,x2-x)*180/Math.PI;if(angle>90.01)angle-=180;if(angle<=-90.01)angle+=180;
+    parts.push(`<text class="stair-note" transform="translate(${fmt(x)} ${fmt(y)}) rotate(${fmt(angle)})">${esc(t.note.text)}</text>`);}
+   for(const d of t.dims??[])dims.push(dimension(d.a,d.b,d.out,0,P,'dim-stair',false));
   }
   parts.push(`<g class="room-dims">${dims.join('')}</g>`);
   // Exterior chains: rows step outward; the clear row sits nearest the walls.
@@ -210,7 +275,7 @@ function rect(r,P,cls){return `<polygon class="${cls}" points="${[[r.x0,r.z0],[r
 function line(a,b,P,cls){const [p,q]=[P(a),P(b)];return `<line class="${cls}" x1="${fmt(p[0])}" y1="${fmt(p[1])}" x2="${fmt(q[0])}" y2="${fmt(q[1])}"/>`;}
 // A dimension from a to b, displaced by offset along the outward unit vector.
 // Lengths are measured after projection, so they match the 3D model's units.
-function dimension(a,b,out,offset,P,cls,extensions=true,label=true){
+function dimension(a,b,out,offset,P,cls,extensions=true,label=true,suffix='',t=.5){
  const pa=[a[0]+out[0]*offset,a[1]+out[1]*offset],pb=[b[0]+out[0]*offset,b[1]+out[1]*offset];
  const [p,q]=[P(pa),P(pb)],len=Math.hypot(q[0]-p[0],q[1]-p[1]);if(len<1e-4)return '';
  const ux=(q[0]-p[0])/len,uy=(q[1]-p[1])/len,o=P([pa[0]+out[0],pa[1]+out[1]]),ox=o[0]-p[0],oy=o[1]-p[1];
@@ -218,10 +283,10 @@ function dimension(a,b,out,offset,P,cls,extensions=true,label=true){
  if(extensions){const [ea,eb]=[P([a[0]+out[0]*.12,a[1]+out[1]*.12]),P([b[0]+out[0]*.12,b[1]+out[1]*.12])];parts.push(`<path class="dim-ext" d="M${fmt(ea[0])} ${fmt(ea[1])}L${fmt(p[0]+ox*.08)} ${fmt(p[1]+oy*.08)}M${fmt(eb[0])} ${fmt(eb[1])}L${fmt(q[0]+ox*.08)} ${fmt(q[1]+oy*.08)}"/>`);}
  parts.push(`<path class="dim-line" d="M${fmt(p[0])} ${fmt(p[1])}L${fmt(q[0])} ${fmt(q[1])}M${fmt(p[0]-tx)} ${fmt(p[1]-ty)}L${fmt(p[0]+tx)} ${fmt(p[1]+ty)}M${fmt(q[0]-tx)} ${fmt(q[1]-ty)}L${fmt(q[0]+tx)} ${fmt(q[1]+ty)}"/>`);
  if(label){
-  let angle=Math.atan2(uy,ux)*180/Math.PI;if(angle>90.01)angle-=180;if(angle<=-90.01)angle+=180;
+  let angle=Math.atan2(uy,ux)*180/Math.PI;if(angle>89.99)angle-=180;if(angle<=-90.01)angle+=180;
   // Labels sit on the outward side: away from the walls, or into the room.
-  const side=.13,mx=(p[0]+q[0])/2+ox*side,my=(p[1]+q[1])/2+oy*side;
-  parts.push(`<text class="dim-text" transform="translate(${fmt(mx)} ${fmt(my)}) rotate(${fmt(angle)})">${formatMetres(len)}</text>`);
+  const side=.13,mx=p[0]+(q[0]-p[0])*t+ox*side,my=p[1]+(q[1]-p[1])*t+oy*side;
+  parts.push(`<text class="dim-text" transform="translate(${fmt(mx)} ${fmt(my)}) rotate(${fmt(angle)})">${formatMetres(len)}${esc(suffix)}</text>`);
  }
  parts.push('</g>');return parts.join('');
 }
