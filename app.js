@@ -599,6 +599,8 @@ const frontWindowTrims={
 };
 const partyWallX=walls.find(w=>w.id==='u-party').a[0];
 const carportWindows=new Set(['living-side']);
+// The end-lot guest room side window has a head trim but no sill.
+const headOnlyWindows=new Set(['guest-side']);
 for(const o of reviewedOpenings.filter(o=>o.system==='windows')){
  const dir=outsideFaces[o.wall];if(!dir)continue;
  const x=o.x+dir[0]*.095,z=o.z+dir[1]*.095,y=o.base+o.sill;
@@ -607,7 +609,7 @@ for(const o of reviewedOpenings.filter(o=>o.system==='windows')){
  const trim=(along,up,w,h,mat=photoTrim,depth=.08,name=o.code+' exterior trim')=>{const out=depth/2-.04,m=photoBox('windows',o.floor,x+(o.axis==='x'?along:dir[0]*out),y+up,z+(o.axis==='z'?along:dir[1]*out),o.axis==='x'?w:depth,h,o.axis==='x'?depth:w,mat,name,source);m.userData.openingId=o.id;return m;};
  if(!front){
   // Windows facing the carport have a sill but no head trim.
-  trim(0,-.055,o.w+.20,.11);if(!carportWindows.has(o.id))trim(0,o.h+.055,o.w+.20,.11);
+  if(!headOnlyWindows.has(o.id))trim(0,-.055,o.w+.20,.11);if(!carportWindows.has(o.id))trim(0,o.h+.055,o.w+.20,.11);
   if(o.floor)for(const side of [-1,1])trim(side*(o.w/2+.045),o.h/2,.09,o.h);
   continue;
  }
@@ -1391,12 +1393,13 @@ const tankMat=material(0x746d9e);tankMat.transparent=true;tankMat.opacity=.38;ta
 const septicTank={x:1.7,z:3.0,w:1.5,d:2.1,top:-.2,bottom:-.9};
 box('plumbing',0,septicTank.x,(septicTank.top+septicTank.bottom)/2,septicTank.z,septicTank.w,septicTank.top-septicTank.bottom,septicTank.d,tankMat,'Septic tank','P-1','Simplified 2.10 × 1.50 m tank envelope; depth and exact position are approximate.');
 // Owner's reading: the pipe leaving B0-NE is the septic tank vent, not the soil
-// stack. It leaves the tank roof at the inlet end, runs north under the floor
-// beside the sanitary main, rises in the B0 corner beside the stack and turns out
-// through the midpoint of B0-NE at the previously observed height.
-const septicVent={x:sanitaryStack.x-.10,runY:-.12,riseZ:sanitaryStack.z,tankZ:septicTank.z-septicTank.d/2+.10}; // clear of the cleanout riser
-const soilExhaustPoints=[[septicVent.x,septicTank.top,septicVent.tankZ],[septicVent.x,septicVent.runY,septicVent.tankZ],[septicVent.x,septicVent.runY,septicVent.riseZ],[septicVent.x,soilExit.y,septicVent.riseZ],[soilExit.x,soilExit.y,septicVent.riseZ],[soilExit.x,soilExit.y,soilExit.z]];
-const soilExhaust=part(new THREE.TubeGeometry(roundedPipe(soilExhaustPoints,.12),160,soilPipeRadius,12,false),wasteMat,'plumbing',0,[0,0,0],'Septic tank vent · B0-NE exterior exit','User correction','Septic tank vent: leaves the tank roof at the inlet end, runs under the floor beside the sanitary main, rises in the B0 corner beside the soil stack and exits north through the midpoint of B0-NE. The exit height and position are as observed; the buried route, riser position and 3 in size are assumed.',false);
+// stack. It leaves the tank roof at the inlet end, runs north under the floor in
+// line with the exit, rises inside B0-NE directly below the exit with no
+// horizontal jog, and turns out through the midpoint of B0-NE at the observed height.
+// The riser sits at the inner face, clear of the B0 water line in the wall.
+const septicVent={x:soilExit.x,runY:-.12,riseZ:sanitaryStack.z,tankZ:septicTank.z-septicTank.d/2+.10}; // clear of the cleanout riser
+const soilExhaustPoints=[[septicVent.x,septicTank.top,septicVent.tankZ],[septicVent.x,septicVent.runY,septicVent.tankZ],[septicVent.x,septicVent.runY,septicVent.riseZ],[septicVent.x,soilExit.y,septicVent.riseZ],[soilExit.x,soilExit.y,soilExit.z]];
+const soilExhaust=part(new THREE.TubeGeometry(roundedPipe(soilExhaustPoints,.12),160,soilPipeRadius,12,false),wasteMat,'plumbing',0,[0,0,0],'Septic tank vent · B0-NE exterior exit','User correction','Septic tank vent: leaves the tank roof at the inlet end, runs north under the floor in line with the exit, rises inside B0-NE directly below the exit and turns north out through the midpoint of B0-NE. The exit height and position are as observed; the buried route, riser position and 3 in size are assumed.',false);
 Object.assign(soilExhaust.userData,{soilExhaust:true,septicVent:true,wallCode:soilExit.wallCode,wallId:soilExit.wallId,routePoints:soilExhaustPoints,outletDirection:[0,0,-1]});
 // Maintenance cleanout: a riser from the tank roof over the inlet end, closed
 // by a removable cover flush with the carport surface.
