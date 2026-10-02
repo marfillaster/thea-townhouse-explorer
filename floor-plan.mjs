@@ -71,12 +71,21 @@ export function exteriorChains(walls,faces,floor){
  return chains;
 }
 
-export function buildFloorPlan({walls,faces,openings,rooms,fixtures=[],stairs=[],floor}){
- return {floor,fixtures:fixtures.filter(f=>f.floor===floor),stairs:stairs.filter(t=>t.floor===floor),walls:planWallSolids(walls,openings,floor),openings:planOpenings(walls,faces,openings,floor),rooms:planRooms(rooms,floor),chains:exteriorChains(walls,faces,floor)};
+// Covers are built-out boxes on a wall face (a service-panel cover, a riser
+// chase). They take floor area from the room they stand in.
+export function buildFloorPlan({walls,faces,openings,rooms,fixtures=[],stairs=[],covers=[],floor}){
+ const floorCovers=covers.filter(c=>c.floor===floor),planned=planRooms(rooms,floor);
+ for(const c of floorCovers){
+  const cx=(c.x0+c.x1)/2,cz=(c.z0+c.z1)/2,room=planned.find(r=>r.regions.some(g=>cx>g.x0&&cx<g.x1&&cz>g.z0&&cz<g.z1));
+  if(room){room.area-=(c.x1-c.x0)*(c.z1-c.z0);(room.covers??=[]).push(c.label);}
+ }
+ return {floor,fixtures:fixtures.filter(f=>f.floor===floor),stairs:stairs.filter(t=>t.floor===floor),covers:floorCovers,walls:planWallSolids(walls,openings,floor),openings:planOpenings(walls,faces,openings,floor),rooms:planned,chains:exteriorChains(walls,faces,floor)};
 }
 
 // Plan styles live with the renderer so exported files carry them.
 export const planStyles=`.plan-caption{fill:#98a8ba;font-size:.2px}
+.plan-cover{fill:#5d6c7c;stroke:#c3cdd8;stroke-width:1;vector-effect:non-scaling-stroke}
+.dim-cover path{stroke:#c3cdd8}.dim-cover .dim-text{fill:#c3cdd8;font-size:.1px}
 .plan-fixture{fill:#3a4a5c;stroke:#c3cdd8;stroke-width:1;vector-effect:non-scaling-stroke}
 .plan-sink{fill:#2a3a4c;stroke:#65bafa;stroke-width:1;vector-effect:non-scaling-stroke}
 .plan-tread{fill:#2b3b4d;stroke:#c3cdd8;stroke-width:1;vector-effect:non-scaling-stroke}
@@ -137,6 +146,7 @@ export function renderFloorPlans(entries,project,mode='both'){
   const zones=[...plan.fixtures.map(f=>{const o=f.clearance?.outline;return {x0:Math.min(f.x0,o?.x0??f.x0)-.05,x1:Math.max(f.x1,o?.x1??f.x1,f.clearance?.x1??f.x1)+.05,z0:Math.min(f.z0,o?.z0??f.z0)-.05,z1:Math.max(f.z1,o?.z1??f.z1)+.65};}),
    // Doors: the leaf's sweep on one side, the opening dimension on the other.
    ...plan.openings.filter(o=>o.kind==='door').map(o=>{const pts=[o.start,o.end].flatMap(p=>[[p[0]-o.normal[0]*(HALF+.4),p[1]-o.normal[1]*(HALF+.4)],[p[0]+o.normal[0]*(HALF+o.width),p[1]+o.normal[1]*(HALF+o.width)]]);return {x0:Math.min(...pts.map(p=>p[0])),x1:Math.max(...pts.map(p=>p[0])),z0:Math.min(...pts.map(p=>p[1])),z1:Math.max(...pts.map(p=>p[1])),weight:2};}),
+   ...(plan.covers??[]).map(c=>({x0:c.x0-.25,x1:c.x1+.25,z0:c.z0-.25,z1:c.z1+.25,weight:2})),
    ...plan.stairs.map(t=>{const pts=t.treads.flatMap(r=>r.polygon);return {x0:Math.min(...pts.map(p=>p[0]))-.05,x1:Math.max(...pts.map(p=>p[0]))+.05,z0:Math.min(...pts.map(p=>p[1]))-.05,z1:Math.max(...pts.map(p=>p[1]))+.05,weight:2};})];
   parts.push(`<g class="plan-floor" data-floor="${plan.floor}">`);
   parts.push(`<text class="plan-title" x="${fmt(box.x0+dx)}" y="${fmt(box.y0-2.75)}">${esc(title)}</text>`);
@@ -198,6 +208,11 @@ export function renderFloorPlans(entries,project,mode='both'){
    if(show.overall&&!same(o.z0,o.z1,c.z0,c.z1))dims.push(dimension([west,o.z0],[west,o.z1],[1,0],0,P,'dim-overall',false,true,'',textT('x',west,o.z0,o.z1,1)));
   }
   for(const w of plan.walls)parts.push(rect(w,P,'plan-wall'));
+  // Covers: the box itself, its size, and how far it sets a door jamb off the wall.
+  for(const c of plan.covers??[]){
+   parts.push(rect(c,P,'plan-cover').replace('/>',`><title>${esc(c.label)}</title></polygon>`));
+   for(const d of c.dims??[])dims.push(dimension(d.a,d.b,d.out,0,P,d.door?'dim-door':'dim-cover',false,true,d.suffix??'',d.t??.5));
+  }
   for(const o of plan.openings){
    const [a,b]=[o.start,o.end],n=o.normal;
    if(o.kind==='window'){

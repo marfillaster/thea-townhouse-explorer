@@ -737,7 +737,7 @@ const masterSwitchStart=objects.length;
 // Owner-observed: an 8 × 3 in cover boxes out the master-bedroom northwest
 // corner, 8 in along the north wall and 3 in deep; the entry door clears it.
 const masterCornerCover={w:.2032,d:.0762,x1:walls.find(w=>w.id==='u-divider').a[0]-.075,z0:walls.find(w=>w.id==='u-bath-south').a[1]+.075,bottom:3.1,top:5.65};
-box('structure',1,masterCornerCover.x1-masterCornerCover.w/2,(masterCornerCover.bottom+masterCornerCover.top)/2,masterCornerCover.z0+masterCornerCover.d/2,masterCornerCover.w,masterCornerCover.top-masterCornerCover.bottom,masterCornerCover.d,mats.wall,'MB northwest corner cover · 8 × 3 in','User correction','Floor-to-ceiling cover in the master-bedroom northwest corner, 203 mm along the north wall and 76 mm deep. It conceals the B1 soil pipe and the conduits to the second floor; the entry door frame is set 76 mm from the north wall to clear it. ').userData.masterCornerCover=true;
+box('structure',1,masterCornerCover.x1-masterCornerCover.w/2,(masterCornerCover.bottom+masterCornerCover.top)/2,masterCornerCover.z0+masterCornerCover.d/2,masterCornerCover.w,masterCornerCover.top-masterCornerCover.bottom,masterCornerCover.d,mats.wall,'MB northwest corner cover · 8 × 3 in','User correction','Floor-to-ceiling cover in the master-bedroom northwest corner, 203 mm along the north wall and 76 mm deep. It conceals the B1 vent pipe and the conduits to the second floor; the entry door frame is set 76 mm from the north wall to clear it. ').userData.masterCornerCover=true;
 const masterSwitch=propertySwitch('MB-W1I',1,2.455,4.45,-1.17,[-1,0],['Master bedroom','Master east eave light'],'Left of the master-bedroom door when facing the door from inside the bedroom.');
 objects.slice(masterSwitchStart).forEach(m=>Object.assign(m.userData,{roofVariant:'end',masterRoomSwitch:true}));
 const innerMasterSwitchStart=objects.length;
@@ -1135,11 +1135,14 @@ function freshWater(f,name,points,extra={}){
  objects.slice(start).forEach(m=>Object.assign(m.userData,{freshWater:true,diameter:.0127,routePoints:points,...extra}));freshWaterRoutes.push({floor:f,name,points,...extra});
 }
 // Owner-observed: the supply rises from the ground exposed on B0-NE, between
-// W5 and the kitchen-service corner, then enters below the second-floor slab
-// at the kitchen service wall to feed B1. B0 is fed from the riser foot.
+// W5 and the kitchen-service corner, turns the corner and runs horizontally
+// along the outside of KT-EE below the slab, then enters the wall at its north
+// end to feed B1. B0 is fed from the riser foot.
 const waterRiserWall=walls.find(w=>w.id==='g-bath-rear'),waterRiserWindow=reviewedOpenings.find(o=>o.id==='ground-bath-window');
 const waterRiser={wallCode:'B0-NE',wallId:waterRiserWall.id,x:(waterRiserWindow.x+waterRiserWindow.w/2+walls.find(w=>w.id==='g-service').a[0]-.075)/2,z:waterRiserWall.a[1]-.075-.025,groundY:-.08,upperY:2.90};
-const waterHubs=[waterRiser,{x:walls.find(w=>w.id==='g-service').a[0],z:waterRiser.z}];
+const kitchenServiceWall=walls.find(w=>w.id==='g-service');
+waterRiser.ktFaceX=kitchenServiceWall.a[0]-.075-.025;waterRiser.entryZ=kitchenServiceWall.a[1]+.075+.10; // clear of the west roof downpipe
+const waterHubs=[waterRiser,{x:kitchenServiceWall.a[0],z:waterRiser.entryZ}];
 // Owner-observed: the supply enters through LR-SE just below the west
 // (exterior) data utility box, drops inside the wall and runs underfloor.
 const waterInlet={wallCode:'LR-SE',x:dataLRExterior.wallPoint[0],y:dataLRExterior.wallPoint[1]-dataLines.boxHeight/2-.10,wallZ:frontWallZ,outsideZ:frontWallZ+.075+.04,buriedY:-.30,streetZ:8.0};
@@ -1147,7 +1150,8 @@ freshWater(0,'Cold water supply · street to LR-SE inlet',[[waterInlet.x,waterIn
 freshWater(0,'Cold water supply',[[waterInlet.x,waterInlet.y,waterInlet.wallZ],[waterInlet.x,-.08,waterInlet.wallZ],[waterInlet.x,-.08,waterRiser.z],[waterRiser.x,-.08,waterRiser.z]]);
 freshWater(0,'Kitchen sink cold water',[[kitchenCounter.sinkX,-.08,waterRiser.z],[kitchenCounter.sinkX,-.08,-3.825],[kitchenCounter.sinkX,1.1,-3.825],[kitchenCounter.sinkX,1.1,-3.5]]);
 freshWater(0,'Cold water riser · exposed on B0-NE',[[waterRiser.x,waterRiser.groundY,waterRiser.z],[waterRiser.x,waterRiser.upperY,waterRiser.z]],{exposedRiser:true,wallCode:waterRiser.wallCode});
-freshWater(1,'Upper bathroom supply',[[waterRiser.x,waterRiser.upperY,waterRiser.z],[waterHubs[1].x,waterRiser.upperY,waterHubs[1].z],[waterHubs[1].x,waterRiser.upperY,-3.825]]);
+freshWater(1,'Cold water · exposed along KT-EE',[[waterRiser.x,waterRiser.upperY,waterRiser.z],[waterRiser.ktFaceX,waterRiser.upperY,waterRiser.z],[waterRiser.ktFaceX,waterRiser.upperY,waterRiser.entryZ],[waterHubs[1].x,waterRiser.upperY,waterHubs[1].z]],{exposedRun:true,wallCode:'KT-EE'});
+freshWater(1,'Upper bathroom supply',[[waterHubs[1].x,waterRiser.upperY,waterHubs[1].z],[waterHubs[1].x,waterRiser.upperY,-3.825]]);
 // Faucet provision: a stub off a supply line ending in a valve body and spout.
 const faucetMat=material(0xc9ced1,.35),faucetProvisions=[];
 function faucetProvision(f,name,wallCode,from,to,detail){
@@ -1340,9 +1344,9 @@ for(const [floor,points,name]of [[1,westRoofDrainUpperPoints,'West roof downpipe
 }
 // Additional owner-observed sanitary outlet beside the upper B1-EE elbow.
 // Connect the upper bathroom vent to the observed B1 wall penetration.
-const upperSoilExit={wallCode:'B1-EE',wallId:westDrainWall.id,x:westDrainWall.a[0]-.075-.30,y:westRoofDrainUpperPoints[2][1],z:westRoofDrain.z+.25,radius:soilPipeRadius};
+const upperSoilExit={wallCode:'B1-EE',wallId:westDrainWall.id,x:westDrainWall.a[0]-.075-.30,y:westRoofDrainUpperPoints[2][1],z:westRoofDrain.z+.25,radius:.0508/2}; // owner-observed 2 in vent
 const upperSoilExhaustPoints=[[westDrainWall.a[0],upperSoilExit.y,upperSoilExit.z],[upperSoilExit.x,upperSoilExit.y,upperSoilExit.z]];
-const upperSoilExhaust=part(new THREE.TubeGeometry(roundedPipe(upperSoilExhaustPoints),8,upperSoilExit.radius,12,false),wasteMat,'plumbing',1,[0,0,0],'Soil pipe exhaust · B1-EE','User correction','Additional soil-pipe exhaust through B1-EE beside the upper downpipe elbow. Shown at the elbow height, 250 mm toward the south along the wall. The spacing and 300 mm exterior projection are approximate. Inside, it connects to the 3 in B1 soil pipe that rises through the MB northwest corner cover.',false);
+const upperSoilExhaust=part(new THREE.TubeGeometry(roundedPipe(upperSoilExhaustPoints),8,upperSoilExit.radius,12,false),wasteMat,'plumbing',1,[0,0,0],'Soil pipe exhaust · B1-EE','User correction','Additional soil-pipe exhaust through B1-EE beside the upper downpipe elbow. Shown at the elbow height, 250 mm toward the south along the wall. The spacing and 300 mm exterior projection are approximate. Inside, it connects to the 2 in B1 vent pipe that rises through the MB northwest corner cover.',false);
 Object.assign(upperSoilExhaust.userData,{soilExhaust:true,additionalSoilExhaust:true,wallCode:upperSoilExit.wallCode,wallId:upperSoilExit.wallId,routePoints:upperSoilExhaustPoints,outletDirection:[-1,0,0]});
 const upperSoilBranch=sanitaryRoutes.find(r=>r.floor===1&&r.bathroomSoil);
 // Owner's reading: the B1 soil pipe rises through the MB northwest corner cover,
@@ -1352,7 +1356,7 @@ const upperSoilBranch=sanitaryRoutes.find(r=>r.floor===1&&r.bathroomSoil);
 // B1-EE penetration (clear of the downpipe crossing further north).
 const upperVentRiser={location:'MB northwest corner cover',x:upperChase.soilX,z:upperChase.z,runY:upperCeiling.y+.10};
 const upperVentPoints=[upperSoilBranch.points[3],[upperVentRiser.x,upperChase.slabTop,upperVentRiser.z],[upperVentRiser.x,upperVentRiser.runY,upperVentRiser.z],upperSoilExhaustPoints[0]];
-sanitaryRoute(1,'Bathroom 1 soil pipe · via MB corner cover',upperVentPoints,upperSoilExit.radius,{bathroomVent:true,chase:upperVentRiser.location});
+sanitaryRoute(1,'Bathroom 1 vent pipe · 2 in · via MB corner cover',upperVentPoints,upperSoilExit.radius,{bathroomVent:true,chase:upperVentRiser.location});
 // East-roof outlet drops on BL-NI beside its east corner, then turns only
 // after passing through the balcony slab to the existing CP-EI downpipe.
 const balconyDrainWall=walls.find(w=>w.id==='u-balcony');
@@ -1851,6 +1855,23 @@ const planCamera2d={box:null,fit:null,key:''};
 const planFixtures=[{floor:0,label:'Counter',x0:kitchenCounter.startX,x1:kitchenCounter.endX,z0:kitchenCounter.rearZ,z1:kitchenCounter.frontZ,walls:{x0:true,z0:true},
  sink:{x0:kitchenCounter.sinkX-kitchenCounter.sink.width/2,x1:kitchenCounter.sinkX+kitchenCounter.sink.width/2,z0:kitchenCounter.sink.z-kitchenCounter.sink.depth/2,z1:kitchenCounter.sink.z+kitchenCounter.sink.depth/2},
  clearance:{x1:stair.bottomStartX}}];
+// Wall-face covers in plan, with their size and the door-jamb offsets they set.
+const planCovers=[];
+{
+ const face=bathroomPartition.a[1]-.075,w=servicePanel.w+.016,x0=servicePanel.x-w/2,x1=servicePanel.x+w/2,z0=face-servicePanel.coverDepth;
+ const bathDoorJamb=openingById('ground-bath-door'),jambZ=bathDoorJamb.z+bathDoorJamb.w/2,b0x=walls.find(w=>w.id==='g-bath-door').a[0]-.075-.15;
+ planCovers.push({floor:0,label:'Service-panel cover · KT-SI · 90 mm deep',x0,x1,z0,z1:face,dims:[
+  {a:[x0,z0-.12],b:[x1,z0-.12],out:[0,-1],t:.15}, // label clear of the D4 opening dimension
+  {a:[x1+.12,face],b:[x1+.12,z0],out:[1,0]},
+  {a:[b0x,face],b:[b0x,jambZ],out:[-1,0],door:true}]});
+}
+{
+ const c=masterCornerCover,x0=c.x1-c.w,z1=c.z0+c.d,door=openingById('master-door'),jambZ=door.z-door.w/2,ldx=walls.find(w=>w.id==='u-divider').a[0]+.075+.15;
+ planCovers.push({floor:1,label:'Riser cover · MB northwest corner · 8 × 3 in',x0,x1:c.x1,z0:c.z0,z1,dims:[
+  {a:[x0,z1+.12],b:[c.x1,z1+.12],out:[0,1]},
+  {a:[x0-.12,c.z0],b:[x0-.12,z1],out:[-1,0]},
+  {a:[ldx,c.z0],b:[ldx,jambZ],out:[1,0],door:true}]});
+}
 // Tread outlines in plan, in climbing order. The ground plan cuts the flight
 // about 1.2 m above the floor; the second floor sees the whole flight below.
 const stairTreads=objects.filter(m=>m.userData.stairTread).sort((a,b)=>a.userData.stairTread-b.userData.stairTread).map(m=>{
@@ -1883,7 +1904,7 @@ function renderPlan(){
  const project=([x,z])=>{const p=root.localToWorld(new THREE.Vector3(x,0,z));return [p.x,p.z];};
  const openings=reviewedOpenings.filter(o=>u.end||!['guest-side','master-side'].includes(o.id)),rooms=planRooms();
  const floors=state.level==='all'?[0,1]:[Number(state.level)];
- const rendered=renderFloorPlans(floors.map(f=>({title:f?'Second floor':'Ground floor',plan:buildFloorPlan({walls,faces:wallBaseSurfaces,openings,rooms,fixtures:planFixtures,stairs:planStairs,floor:f})})),project,state.planMode);
+ const rendered=renderFloorPlans(floors.map(f=>({title:f?'Second floor':'Ground floor',plan:buildFloorPlan({walls,faces:wallBaseSurfaces,openings,rooms,fixtures:planFixtures,stairs:planStairs,covers:planCovers,floor:f})})),project,state.planMode);
  const {svg,viewBox}=rendered;planCamera2d.rendered=rendered;
  planSvg.innerHTML=`<style>${planStyles}</style>`+svg;
  const key=`${u.id}:${state.level}:${u.width}:${u.depth}`;
@@ -1948,9 +1969,10 @@ function selectPlanRoom(code,floor){
  const room=planRooms().find(r=>r.code===code&&String(r.floor)===String(floor??r.floor));if(!room)return;
  const span=r=>{const a=project([r.x0,r.z0]),b=project([r.x1,r.z0]),c=project([r.x1,r.z1]);return [Math.hypot(b[0]-a[0],b[1]-a[1]),Math.hypot(c[0]-b[0],c[1]-b[1])];};
  const clear={x0:Math.min(...room.regions.map(g=>g.x0)),x1:Math.max(...room.regions.map(g=>g.x1)),z0:Math.min(...room.regions.map(g=>g.z0)),z1:Math.max(...room.regions.map(g=>g.z1))};
- const [cw,cd]=span(clear),[ow,od]=span(room.bounds??clear),area=room.regions.reduce((s,g)=>{const [w,d]=span(g);return s+w*d;},0);
+ const covers=planCovers.filter(c=>c.floor===room.floor&&room.regions.some(g=>(c.x0+c.x1)/2>g.x0&&(c.x0+c.x1)/2<g.x1&&(c.z0+c.z1)/2>g.z0&&(c.z0+c.z1)/2<g.z1));
+ const [cw,cd]=span(clear),[ow,od]=span(room.bounds??clear),area=room.regions.reduce((s,g)=>{const [w,d]=span(g);return s+w*d;},0)-covers.reduce((s,c)=>{const [w,d]=span(c);return s+w*d;},0);
  card.dataset.selected='true';
- card.innerHTML=`<span class="eyebrow">FLOOR PLAN · ${room.floor?'SECOND':'GROUND'} FLOOR</span><h3></h3><p class="measurement-summary">Clear ${formatMetres(cw)} × ${formatMetres(cd)} m<br>Including walls ${formatMetres(ow)} × ${formatMetres(od)} m<br>${room.secondary?`Clear ${room.secondary.label} ${formatMetres(span(room.secondary)[0])} × ${formatMetres(span(room.secondary)[1])} m<br>`:''}<small>Clear area ${area.toFixed(2)} m² · ${room.regions.length} region${room.regions.length>1?'s':''}</small></p><p>Clear dimensions run between wall faces and exclude wall footprints. Including-walls dimensions run to wall centrelines, so each bounding wall adds half its 150 mm thickness. Open-plan edges use the room's span divisions.</p><div class="card-footer">Unit ${u.id} · select another room or press Escape</div>`;
+ card.innerHTML=`<span class="eyebrow">FLOOR PLAN · ${room.floor?'SECOND':'GROUND'} FLOOR</span><h3></h3><p class="measurement-summary">Clear ${formatMetres(cw)} × ${formatMetres(cd)} m<br>Including walls ${formatMetres(ow)} × ${formatMetres(od)} m<br>${room.secondary?`Clear ${room.secondary.label} ${formatMetres(span(room.secondary)[0])} × ${formatMetres(span(room.secondary)[1])} m<br>`:''}<small>Clear area ${area.toFixed(2)} m²${covers.length?` after ${covers.map(c=>c.label.split(' · ')[0].toLowerCase()).join(', ')}`:''} · ${room.regions.length} region${room.regions.length>1?'s':''}</small></p><p>Clear dimensions run between wall faces and exclude wall footprints. Including-walls dimensions run to wall centrelines, so each bounding wall adds half its 150 mm thickness. Open-plan edges use the room's span divisions.</p><div class="card-footer">Unit ${u.id} · select another room or press Escape</div>`;
  card.querySelector('h3').textContent=`${room.code} · ${room.name}`;
 }
 planToggle.onclick=()=>{state.plan=!state.plan;planCamera2d.room=null;clearSelection();sync();if(state.plan){planCamera2d.box=null;applyPlanBox();planSvg.focus();}};
@@ -1970,5 +1992,5 @@ new ResizeObserver(()=>{if(state.plan&&planCamera2d.fit){planCamera2d.box=null;a
 const modelContext=document.modelContext;
 if(modelContext?.registerTool){const lifecycle=new AbortController();const tool={name:'configure_building_view',title:'Configure the building view',description:'Show chosen building systems and select a floor in the visible 3D model.',inputSchema:{type:'object',properties:{systems:{type:'array',items:{type:'string',enum:defs.map(d=>d[0])},uniqueItems:true},floor:{type:'string',enum:['all','0','1']}},required:['systems'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input){if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['systems','floor'].includes(k))||!Array.isArray(input.systems)||input.systems.some(id=>!defs.some(d=>d[0]===id))||new Set(input.systems).size!==input.systems.length||(input.floor!==undefined&&!['all','0','1'].includes(input.floor)))throw new Error('Choose valid systems and floor.');for(const id in state.layers)state.layers[id]=input.systems.includes(id);if(input.floor!==undefined)state.level=input.floor;clearSelection();sync();return {visibleSystems:defs.filter(d=>state.layers[d[0]]).map(d=>d[0]),floor:state.level};}};try{Promise.resolve(modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});}
 function resize(){const {width,height}=viewport.getBoundingClientRect();if(width<=0||height<=0)return;renderer.setSize(width,height,false);perspectiveCamera.aspect=width/height;perspectiveCamera.updateProjectionMatrix();const u=activeUnit(),bounds=state.scope==='block'?blockViewBounds():u;const span=Math.max(16,(bounds.depth+3),((bounds.width+3)/(width/height)));planCamera.left=-span*(width/height)/2;planCamera.right=-planCamera.left;planCamera.top=span/2;planCamera.bottom=-span/2;planCamera.updateProjectionMatrix();}new ResizeObserver(resize).observe(viewport);resize();setView('iso');sync();renderer.setAnimationLoop(()=>{controls.update();sizeSiteLabels();measurements.resize(camera,viewport.clientHeight,viewport.clientWidth);renderer.render(scene,camera);});
-window.townhouse={bathroomTiles,wallTile,wallTileRoutes,showerDrains,septicTank,septicVent,septicCleanout,planStairs,entryCanopy,renderPlan,planRooms,conduitSpec,ceilingPlans,kitchenSoffit,groundBathCeiling,upperCeiling,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,masterCornerCover,upperChase,soffitJunctionBox,waterRiser,waterInlet,faucetProvisions,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,upperVentRiser,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
+window.townhouse={bathroomTiles,wallTile,wallTileRoutes,showerDrains,septicTank,septicVent,septicCleanout,planStairs,planCovers,entryCanopy,renderPlan,planRooms,conduitSpec,ceilingPlans,kitchenSoffit,groundBathCeiling,upperCeiling,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,masterCornerCover,upperChase,soffitJunctionBox,waterRiser,waterInlet,faucetProvisions,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,upperVentRiser,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();document.querySelector('#error').hidden=false;});

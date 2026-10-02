@@ -57,3 +57,13 @@ test('rows that repeat a nearer row are dropped, and export is standalone',()=>{
  const svg=exportFloorPlanSvg(rendered,'Unit 4');
  assert.match(svg,/^<\?xml[^]*<svg xmlns="http:\/\/www.w3.org\/2000\/svg" width="[\d.]+mm"/);assert.match(svg,/<style>[^<]*\.plan-wall/);
 });
+test('wall covers draw with their dimensions and come off the room area',()=>{
+ const surfaces=[{floor:1,x0:0,x1:2.55,z0:-2.275,z1:3.825}];
+ const rooms=buildRoomFloorPlans(walls,faces,surfaces).map(r=>({...r,name:r.code}));
+ const cover={floor:1,label:'Riser cover',x0:2.2718,x1:2.475,z0:-2.2,z1:-2.1238,dims:[{a:[2.6,-2.2],b:[2.6,-2.1238],out:[1,0],door:true}]};
+ const plan=buildFloorPlan({walls,faces,openings:reviewedOpenings,rooms,covers:[cover],floor:1}),mb=plan.rooms.find(r=>r.code==='MB');
+ close(mb.area,2.4*4.45-(cover.x1-cover.x0)*(cover.z1-cover.z0));
+ const {svg}=renderFloorPlans([{title:'Second floor',plan}],p=>p,'both');
+ assert.match(svg,/class="plan-cover"[^>]*><title>Riser cover<\/title>/);
+ assert.match(svg,/<g class="dim dim-door">(?:(?!<\/g>)[^])*?>0\.076<\/text>/);
+});
