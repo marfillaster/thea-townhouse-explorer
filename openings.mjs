@@ -52,9 +52,11 @@ export const openingPlacements = [
  {id:'main-entry',code:'D1',wall:'g-front',at:.50,name:'Main entrance'},
  {id:'service-door',code:'D2',wall:'g-service',at:1.10,name:'Service door',swing:'out',hinge:'end'},
  {id:'guest-door',code:'D3',wall:'g-divider',at:.50,name:'Guest bedroom door'},
- {id:'ground-bath-door',code:'D4',wall:'g-bath-door',at:.75,name:'Ground bathroom door',hinge:'end'},
+ // D4 frame clears KT-SI / B0-SI by 90 mm, the depth of the service-panel cover.
+ {id:'ground-bath-door',code:'D4',wall:'g-bath-door',at:1.160-.075-.09-.30,name:'Ground bathroom door',hinge:'end'},
  {id:'balcony-door',code:'D2',wall:'u-balcony',at:2.05,name:'Balcony door',hinge:'end'},
- {id:'master-door',code:'D3',wall:'u-divider',at:.50,name:'Master bedroom entry'},
+ // D3 frame sits 3 in (76.2 mm) from the master north wall face, clearing the corner cover.
+ {id:'master-door',code:'D3',wall:'u-divider',at:.075+.0762+.40,name:'Master bedroom entry'},
  {id:'bedroom-door',code:'D3',wall:'u-bedroom-entry',at:.50,name:'Bedroom 1 entry'},
  {id:'upper-bath-door',code:'D4',wall:'u-bath-south',at:1.60,name:'Upper bathroom door',hinge:'end'},
  {id:'guest-front',code:'W1a',wall:'g-guest-front',at:1.275,name:'Guest room front window'},

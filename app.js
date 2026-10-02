@@ -48,8 +48,8 @@ function slab(f,x,z,w,d,y,name){const m=box('structure',f,x,y-.075,z,w,.15,d,mat
 slab(0,3.8,1.355,2.5,4.94,.25,'Living and dining floor slab');
 slab(0,3.55,-2.47,3,2.71,.25,'Kitchen floor slab');
 slab(0,1.275,.005,2.55,2.24,.25,'Guest room slab');
-// B0 slab top sits 10 mm below the ground finished floor so its tiles finish flush at +0.25.
-slab(0,1.025,-1.7,2.05,1.16,.24,'Ground bathroom slab');
+// B0 steps down 50 mm: its 10 mm tiles finish at +0.20, below the +0.25 ground floor.
+slab(0,1.025,-1.7,2.05,1.16,.19,'Ground bathroom slab');
 slab(1,1.275,.775,2.55,6.1,3.1,'Master bedroom and balcony slab');
 slab(1,3.8,1.55,2.5,4.55,3.1,'Bedroom 1 slab');
 slab(1,3.05,-2.275,2,3.1,3.1,'Upper bathroom and landing slab');
@@ -175,13 +175,18 @@ for(const [f,y]of [[0,.02],[1,2.95]])for(const [z,x0,x1]of [[-2.275,0,4.05],[1.1
 // step leads into the turn. The second is triangular but its entry edge
 // stays parallel to the first. Step 3's nosing meets the rear wall before
 // the corner; triangular step 4 meets the side wall just past the corner.
-const stair={treads:13,riser:2.85/14,width:.84,turn:{x:4.55,z:-3.325,size:.84,winders:3,cornerOffset:.34},bottomGoing:.26,landingZ:-1.05,counterGap:.50};
+// Owner-measured: 900 mm stair width; step 1 is 10 in (254 mm) deep. The
+// flight stays against the party and rear wall faces.
+const stair={treads:13,riser:2.85/14,width:.90,turn:{winders:3,cornerOffset:.34},bottomGoing:.254,landingZ:-1.05,counterGap:.50};
+stair.turn.x=walls.find(w=>w.id==='g-party').a[0]-.075-stair.width/2;stair.turn.z=walls.find(w=>w.id==='g-rear').a[1]+.075+stair.width/2;stair.turn.size=stair.width;
 const mainInnerX=stair.turn.x-stair.width/2;
 stair.upperTurn={startZ:stair.landingZ+.325-stair.width,endZ:stair.landingZ+.325,winders:3,exitX:mainInnerX};
-stair.bottomStartX=mainInnerX-2*stair.bottomGoing;
-const pivot=[stair.bottomStartX+stair.bottomGoing,stair.turn.z+stair.width/2],rearCorner=[pivot[0],stair.turn.z-stair.width/2],outerRear=[stair.turn.x+stair.width/2,rearCorner[1]],outerFront=[outerRear[0],pivot[1]];
+// Steps 2-4 fan about a pivot on the inner edge of the 900 mm flight;
+// step 1 sits entirely before it.
+stair.bottomStartX=mainInnerX-stair.bottomGoing;
+const pivot=[mainInnerX,stair.turn.z+stair.width/2],rearCorner=[pivot[0],stair.turn.z-stair.width/2],outerRear=[stair.turn.x+stair.width/2,rearCorner[1]],outerFront=[outerRear[0],pivot[1]];
 const beforeCorner=[outerRear[0]-stair.turn.cornerOffset,rearCorner[1]],afterCorner=[outerRear[0],rearCorner[1]+stair.turn.cornerOffset];
-const stairNote='Lower stair arrangement: first step rectangular; second triangular with its front edge parallel to the first. Step 3 has its nosing meet the rear wall before the corner; triangular step 4 has its nosing meet the side wall just beyond the corner, completing the turn. The middle fan tread wraps the outside corner. There is no lower landing. Counter clearance is 500 mm. The 340 mm offsets before/after the corner, other tread dimensions and riser heights are visual estimates.';
+const stairNote='Lower stair arrangement: first step rectangular; second triangular with its front edge parallel to the first. Step 3 has its nosing meet the rear wall before the corner; triangular step 4 has its nosing meet the side wall just beyond the corner, completing the turn. Steps 2–4 are solid down to the floor. The middle fan tread wraps the outside corner. There is no lower landing. Counter clearance is 500 mm. The 900 mm stair width and 254 mm (10 in) first-step depth are measured; steps 2–4 pivot on the inner edge of the 900 mm flight. The 340 mm offsets before/after the corner, other tread dimensions and riser heights are visual estimates.';
 const stairNosingMat=material(0x555a58,.15),stairNosings=[];
 function treadNosing(a,b,top,source='IMG_5151',detail=stairNote){const m=beam('structure',0,[a[0],top+.006,a[1]],[b[0],top+.006,b[1]],.025,.018,stairNosingMat,'Stair tread nosing',source,detail);m.userData.stairNosing=true;stairNosings.push(m);}
 for(let i=0;i<1;i++){
@@ -191,10 +196,11 @@ for(let i=0;i<1;i++){
  treadNosing([x-stair.bottomGoing/2,rearCorner[1]],[x-stair.bottomGoing/2,pivot[1]],top);
 }
 for(const [i,polygon]of [[0,[pivot,rearCorner,beforeCorner]],[1,[pivot,beforeCorner,outerRear,afterCorner]],[2,[pivot,afterCorner,outerFront]]]){
- const top=.25+(i+2)*stair.riser,shape=new THREE.Shape();shape.moveTo(...polygon[0]);polygon.slice(1).forEach(p=>shape.lineTo(...p));shape.closePath();
- const geo=new THREE.ExtrudeGeometry(shape,{depth:stair.riser,bevelEnabled:false,steps:1});geo.rotateX(Math.PI/2);
- const tread=part(geo,mats.concrete,'structure',0,[0,top,0],`Lower stair winder · step ${i+2}`,'IMG_5151 · A-3',stairNote);
- Object.assign(tread.userData,{stairTread:i+2,stairFlight:'winder',stairWinder:true,polygon,entryParallelToFirst:i===0,ascent:'west to south'});
+ // Owner-observed: the winders (steps 2-4) are solid down to the ground floor.
+ const top=.25+(i+2)*stair.riser,solid=true,shape=new THREE.Shape();shape.moveTo(...polygon[0]);polygon.slice(1).forEach(p=>shape.lineTo(...p));shape.closePath();
+ const geo=new THREE.ExtrudeGeometry(shape,{depth:solid?top-.25:stair.riser,bevelEnabled:false,steps:1});geo.rotateX(Math.PI/2);
+ const tread=part(geo,mats.concrete,'structure',0,[0,top,0],`Lower stair winder · step ${i+2}${solid?' · solid base':''}`,'IMG_5151 · A-3',stairNote);
+ Object.assign(tread.userData,{stairTread:i+2,stairFlight:'winder',stairWinder:true,polygon,entryParallelToFirst:i===0,ascent:'west to south',...(solid?{solidBase:true}:{})});
  treadNosing(polygon[0],polygon[1],top);
 }
 const lowerSteps=1+stair.turn.winders;
@@ -542,7 +548,9 @@ for(const o of reviewedOpenings.filter(o=>o.system==='windows')){
  if(o.floor)for(const side of [-1,1])trim(side*(o.w/2+.045),o.h/2,.09,o.h);
 }
 // Kitchen plumbing is concealed by a dropped soffit below the upper slab.
-const kitchenSoffit={x0:walls.find(w=>w.id==='g-service').a[0]+.075,x1:walls.find(w=>w.id==='u-stair').a[0],z0:walls.find(w=>w.id==='g-rear').a[1]+.075,z1:walls.find(w=>w.id==='g-bath-rear').a[1]+.09,bottom:2.77,top:2.95,thickness:.012};
+const kitchenSoffit={x0:walls.find(w=>w.id==='g-service').a[0]+.075,x1:walls.find(w=>w.id==='u-stair').a[0],z0:walls.find(w=>w.id==='g-rear').a[1]+.075,z1:walls.find(w=>w.id==='g-bath-rear').a[1]+.075+.0762,bottom:2.77,top:2.95,thickness:.012};
+// Owner-observed: the 180 mm deep soffit's edge sits 3 in off the wall line, in line
+// with the master-bedroom corner cover above, which it continues as one chase.
 const kitchenSoffitMat=material(0xe8e7df),kitchenSoffitMeshes=[];
 const kitchenSoffitDetail='Kitchen plumbing soffit extends from the reinforced concrete beam beside the B0 door to the rear firewall, and from the rear kitchen service-door wall to the stairwell edge. The approximate underside is +2.77 m, below the overhead plumbing; a hollow enclosure rises to the upper slab underside at +2.95 m. Kitchen lighting mounts below the soffit.';
 function soffitPiece(x,y,z,w,h,d,name){const m=box('structure',0,x,y,z,w,h,d,kitchenSoffitMat,name,'User description',kitchenSoffitDetail);m.userData.kitchenSoffit=true;kitchenSoffitMeshes.push(m);return m;}
@@ -551,6 +559,33 @@ const kitchenSoffitUnderside=soffitPiece((kitchenSoffit.x0+kitchenSoffit.x1)/2,k
 kitchenSoffitUnderside.userData.measurementSpecs=[{a:[-soffitWidth/2,-kitchenSoffit.thickness/2,-soffitDepth/2],b:[soffitWidth/2,-kitchenSoffit.thickness/2,-soffitDepth/2],offset:[0,-.08,-.20],label:'Width'},{a:[soffitWidth/2,-kitchenSoffit.thickness/2,-soffitDepth/2],b:[soffitWidth/2,-kitchenSoffit.thickness/2,soffitDepth/2],offset:[.20,-.08,0],label:'Depth'}];
 soffitPiece((kitchenSoffit.x0+kitchenSoffit.x1)/2,(kitchenSoffit.bottom+kitchenSoffit.top)/2,kitchenSoffit.z1-kitchenSoffit.thickness/2,soffitWidth,soffitDrop,kitchenSoffit.thickness,'Kitchen plumbing soffit · beam edge');
 soffitPiece(kitchenSoffit.x1-kitchenSoffit.thickness/2,(kitchenSoffit.bottom+kitchenSoffit.top)/2,(kitchenSoffit.z0+kitchenSoffit.z1)/2,kitchenSoffit.thickness,soffitDrop,soffitDepth,'Kitchen plumbing soffit · stairwell edge');
+// Owner-observed: the ground bathroom ceiling drops to the soffit underside,
+// spanning B0 between its wall faces.
+const groundBathCeiling={x0:walls.find(w=>w.id==='g-side').a[0]+.075,x1:walls.find(w=>w.id==='g-bath-door').a[0]-.075,z0:walls.find(w=>w.id==='g-bath-rear').a[1]+.075,z1:walls.find(w=>w.id==='g-bath-south').a[1]-.075,y:kitchenSoffit.bottom,thickness:kitchenSoffit.thickness};
+{
+ const c=groundBathCeiling,m=box('structure',0,(c.x0+c.x1)/2,c.y+c.thickness/2,(c.z0+c.z1)/2,c.x1-c.x0,c.thickness,c.z1-c.z0,kitchenSoffitMat,'Ground bathroom ceiling · soffit depth','User correction','Ground bathroom ceiling set at the kitchen soffit underside, +2.77 m, 180 mm below the slab. Board thickness is approximate.');
+ m.userData.groundBathCeiling=true;
+}
+// Owner-observed: the upper indoor rooms share one flat ceiling at +5.65 m,
+// stopping at the balcony wall. It follows the wall-opacity slider so the
+// rooms stay visible from above.
+const upperCeiling={y:5.65,thickness:.012};
+{
+ const W=id=>walls.find(w=>w.id===id),inside=.075;
+ const west=W('u-side').a[0]+inside,east=W('u-party').a[0]-inside,north=W('u-rear').a[1]+inside,front=W('u-front').a[1]-inside;
+ const balcony=W('u-balcony').a[1]-inside,divider=W('u-divider').a[0]+inside,bathSide=W('u-bath-side').a[0]+inside,southOfBath=W('u-bath-south').a[1]+inside;
+ upperCeiling.regions=[
+  {x0:west,x1:east,z0:southOfBath,z1:balcony},          // master bedroom, landing and Bedroom 1
+  {x0:divider,x1:east,z0:balcony,z1:front},             // Bedroom 1 beside the balcony
+  {x0:bathSide,x1:east,z0:north,z1:southOfBath}         // upper bathroom and stairwell
+ ];
+ upperCeiling.material=new THREE.MeshStandardMaterial({color:0xf1efe8,roughness:.9,transparent:true,opacity:state.opacity,depthWrite:false});
+ wallMaterials.push(upperCeiling.material);
+ for(const r of upperCeiling.regions){
+  const m=box('structure',1,(r.x0+r.x1)/2,upperCeiling.y+upperCeiling.thickness/2,(r.z0+r.z1)/2,r.x1-r.x0,upperCeiling.thickness,r.z1-r.z0,upperCeiling.material,'Upper floor ceiling · flat','User correction','Flat ceiling over the upper indoor rooms at +5.65 m, below the roof framing. It stops at the balcony wall. Board thickness is approximate.');
+  m.children.forEach(c=>c.visible=false);m.userData.upperCeiling=true;
+ }
+}
 
 const conduitSpec={sizeInches:.5,diameter:.0127,radius:.00635,material:'PVC'};
 const conduitInfo=flexible=>({conduit:true,conduitSizeInches:conduitSpec.sizeInches,conduitDiameter:conduitSpec.diameter,conduitMaterial:conduitSpec.material,conduitVariant:flexible?'flexible':'rigid'});
@@ -573,10 +608,12 @@ const eNote='Schematic 3D circuit route. Exact concealed routing remains approxi
 const bathroomPartition=walls.find(w=>w.id==='g-bath-south');
 const bathroomDoorWall=walls.find(w=>w.id==='g-bath-door');
 const servicePanel={...embeddedMounts.panel,mounting:'embedded'};
-const panelDetail='Embedded service panel in the chase wall over KT-SI, facing the kitchen. Cabinet sits within a wall recess with a flush cover. Center height (1.55 m above the ground finished floor), cabinet size and concealed connections remain approximate.';
+const panelDetail='Embedded service panel in the chase wall over KT-SI, facing the kitchen. Cabinet sits within a wall recess behind a 90 mm thick cover. Center height (1.55 m above the ground finished floor), cabinet size and concealed connections remain approximate.';
 const panel=box('electrical',0,servicePanel.x,servicePanel.y,servicePanel.z,servicePanel.w,servicePanel.h,servicePanel.d,powerMat,'Embedded service panel · KT-SI','User correction',panelDetail);
 Object.assign(panel.userData,{wallId:servicePanel.wallId,wallCode:servicePanel.wallCode,servicePanel:true,mounting:'embedded'});
-const panelCover=box('electrical',0,servicePanel.x,servicePanel.y,bathroomPartition.a[1]-.075-.006,servicePanel.w+.016,servicePanel.h+.016,.008,material(0x8e9da9,.2),'Embedded service-panel cover · KT-SI','User correction',panelDetail);
+// Owner-observed: the flush panel cover is 90 mm thick, standing proud of KT-SI.
+servicePanel.coverDepth=.09;
+const panelCover=box('electrical',0,servicePanel.x,servicePanel.y,bathroomPartition.a[1]-.075-servicePanel.coverDepth/2,servicePanel.w+.016,servicePanel.h+.016,servicePanel.coverDepth,material(0x8e9da9,.2),'Embedded service-panel cover · KT-SI','User correction',panelDetail);
 Object.assign(panelCover.userData,{servicePanel:true,servicePanelCover:true,wallId:servicePanel.wallId,wallCode:servicePanel.wallCode,mounting:'embedded'});
 
 const planLights=[];
@@ -586,8 +623,9 @@ for(const [f,pts]of [[0,[[3.85,2.3],[3.85,.3],[3,-2.7],[1.05,-1.75],[1.2,0],[1.2
  pts.forEach(([x,z],i)=>{
   if(f===1&&i===2)return;
   const floorName=f?'Second':'Ground';
-  const m=part(new THREE.CylinderGeometry(.072,.072,.045,16),fixtureMat,'electrical',f,[x,!f&&i===2?kitchenSoffit.bottom-.0225:ceiling-.05,z],`Lighting outlet ${i+1} · ${floorName} floor`,'E-1','Ceiling socket with bulb. Approximate lighting point location; fitting profile matches the other bulb fixtures.',false);
-  m.userData.planLight=true;if(!f&&i===2){m.userData.kitchenSoffitLight=true;m.userData.detail+=' Mounted beneath the kitchen plumbing soffit.';}planLights.push(m);
+  const m=part(new THREE.CylinderGeometry(.072,.072,.045,16),fixtureMat,'electrical',f,[x,!f&&(i===2||i===3)?kitchenSoffit.bottom-.0225:ceiling-.05,z],`Lighting outlet ${i+1} · ${floorName} floor`,'E-1','Ceiling socket with bulb. Approximate lighting point location; fitting profile matches the other bulb fixtures.',false);
+  m.userData.planLight=true;if(!f&&i===2){m.userData.kitchenSoffitLight=true;m.userData.detail+=' Mounted beneath the kitchen plumbing soffit.';}
+  if(!f&&i===3){m.userData.groundBathCeilingLight=true;m.userData.detail+=' Mounted on the lowered ground-bathroom ceiling.';}planLights.push(m);
   const bulb=part(new THREE.SphereGeometry(.045,12,8),planBulbMat,'electrical',f,[x,m.position.y-.055,z],`Lighting bulb ${i+1} · ${floorName} floor`,'E-1','Bulb attached to the ceiling lighting socket.',false);
   Object.assign(bulb.userData,{planLightBulb:true,lightingOutletOwner:m.uuid});
  });
@@ -696,6 +734,10 @@ guestRoomElectrical.switch=guestRoomSwitch.plate;
 const guestRoomLight=planLights.find(m=>m.userData.floor===0&&m.position.x===1.2&&m.position.z===0);
 Object.assign(guestRoomLight.userData,{controlledBy:'GR-WI guest-room switch',roomCode:'GR'});guestRoomElectrical.light=guestRoomLight;
 const masterSwitchStart=objects.length;
+// Owner-observed: an 8 × 3 in cover boxes out the master-bedroom northwest
+// corner, 8 in along the north wall and 3 in deep; the entry door clears it.
+const masterCornerCover={w:.2032,d:.0762,x1:walls.find(w=>w.id==='u-divider').a[0]-.075,z0:walls.find(w=>w.id==='u-bath-south').a[1]+.075,bottom:3.1,top:5.65};
+box('structure',1,masterCornerCover.x1-masterCornerCover.w/2,(masterCornerCover.bottom+masterCornerCover.top)/2,masterCornerCover.z0+masterCornerCover.d/2,masterCornerCover.w,masterCornerCover.top-masterCornerCover.bottom,masterCornerCover.d,mats.wall,'MB northwest corner cover · 8 × 3 in','User correction','Floor-to-ceiling cover in the master-bedroom northwest corner, 203 mm along the north wall and 76 mm deep. It conceals the B1 soil pipe and the conduits to the second floor; the entry door frame is set 76 mm from the north wall to clear it. ').userData.masterCornerCover=true;
 const masterSwitch=propertySwitch('MB-W1I',1,2.455,4.45,-1.17,[-1,0],['Master bedroom','Master east eave light'],'Left of the master-bedroom door when facing the door from inside the bedroom.');
 objects.slice(masterSwitchStart).forEach(m=>Object.assign(m.userData,{roofVariant:'end',masterRoomSwitch:true}));
 const innerMasterSwitchStart=objects.length;
@@ -718,6 +760,12 @@ const upperBathDoor=openingById('upper-bath-door'),upperBathWallZ=walls.find(w=>
 const upperBathSwitch=propertySwitch('B1-S2I',1,upperBathDoor.x-upperBathDoor.w/2-.20,3.10+stairwellLighting.mountHeight,upperBathWallZ-.095,[0,-1],['Upper bathroom'],'Inside the upper bathroom beside the door on B1-S2I, on the latch side. Shown 200 mm from the door edge and 1.35 m above the floor; these offsets are approximate.');
 const upperBathLight=planLights.find(m=>m.userData.floor===1&&m.position.x===3.1&&m.position.z===-2.9);
 Object.assign(upperBathLight.userData,{controlledBy:'B1-S2I upper-bathroom switch',roomCode:'B1'});
+// Ground bathroom switch: inside B0 on B0-WI beside the door, on the latch side,
+// set out from the 8 mm wall tiles. B0's raised floor finishes at +0.22.
+const groundBathDoor=openingById('ground-bath-door'),groundBathWallX=walls.find(w=>w.id==='g-bath-door').a[0];
+const groundBathSwitch=propertySwitch('B0-WI',0,groundBathWallX-.095-.008,.22+stairwellLighting.mountHeight,groundBathDoor.z-groundBathDoor.w/2-.20,[-1,0],['Ground bathroom'],'Inside the ground bathroom beside the door on B0-WI, on the latch side. Shown 200 mm from the door edge and 1.35 m above the raised bathroom floor; these offsets are approximate.');
+const groundBathLight=planLights.find(m=>m.userData.floor===0&&m.position.x===1.05&&m.position.z===-1.75);
+Object.assign(groundBathLight.userData,{controlledBy:'B0-WI ground-bathroom switch',roomCode:'B0'});
 const serviceDoor=openingById('service-door');
 const kitchenSwitchZ=(kWindow.z+kWindow.w/2+serviceDoor.z-serviceDoor.w/2)/2;
 const kitchenSwitch=propertySwitch('KT-E1I',0,2.145,1.60,kitchenSwitchZ,[1,0],['Kitchen','Master north eave light'],'Between the service door and kitchen window on KT-E1I. Two vertically arranged gangs fit the narrow opening gap.',true);
@@ -805,15 +853,37 @@ function circuitRoute(id,floor,name,points,extra={}){
  const c=circuitById[id],start=objects.length;
  const detail=conduitNote(id==='lighting')+`${c.name} · ${c.amps} A branch from the 60 A main service. ${c.routing==='floor-chase'?'Outlet conduits use direct diagonal connections in shallow chipped floor channels covered by the finish. Outlets on the same circuit and physical wall share a channel beside that wall, with short concealed wall rises. Channel depth and concealed wall crossings are schematic.':c.routing==='underfloor'?'Horizontal outlet runs are under the floor, rising within walls to the outlet.':'Lighting and switch distribution is one straight-run conduit tree per ceiling, with junction boxes at tees and concealed wall drops to switches. Switch legs and stair travelers share these conduits.'} Locations and bends are schematic; colors identify circuit groups.`;
  if(id==='lighting')flexibleConduit(clean,circuitMaterials[id],floor,name,'User circuit schedule · E-1',detail);
- else if(extra.finishCovered)part(new THREE.TubeGeometry(roundedPipe(clean,.10),Math.max(12,(clean.length-1)*16),conduitSpec.radius,8,false),circuitMaterials[id],'electrical',floor,[0,0,0],name,'User circuit schedule · E-1',detail,false);
- else route('electrical',floor,clean,conduitSpec.radius,circuitMaterials[id],name,'User circuit schedule · E-1',detail);
+ // PVC conduit bends are swept, never mitred.
+ else part(new THREE.TubeGeometry(roundedPipe(clean,.10),Math.max(12,(clean.length-1)*16),conduitSpec.radius,8,false),circuitMaterials[id],'electrical',floor,[0,0,0],name,'User circuit schedule · E-1',detail,false);
  objects.slice(start).forEach(m=>Object.assign(m.userData,{...conduitInfo(id==='lighting'),circuitId:id,circuitName:c.name,breakerAmps:c.amps,concealed:true,routingMode:c.routing,routePoints:clean,...extra}));
  circuitRoutes.push({id,floor,name,points:clean,...conduitInfo(id==='lighting'),...extra});
 }
-// Panel feeds leave the cabinet in the KT-SI kitchen-face chase. Circuits for
-// the second floor rise at the divider end of that chase, which continues above
-// the slab on the master face of the divider.
+// Panel feeds leave the cabinet in the KT-SI kitchen-face chase. Owner-observed:
+// conduits to the second floor rise up KT-SI to the ceiling, run north into the
+// kitchen soffit and pass up through the MB northwest corner cover.
 const serviceRiser={x:2.55-wallChaseOffset,z:bathroomPartition.a[1]-wallChaseOffset};
+const upperChase={x:masterCornerCover.x1-masterCornerCover.w/2,z:masterCornerCover.z0+masterCornerCover.d/2,ceilingY:2.90,slabBottom:2.95,slabTop:3.10,spread:.35,via:'Kitchen soffit · MB corner chase'};
+// Lanes across the 8 in cover, east to west: the 3 in B1 soil pipe, the power
+// conduits above the soffit junction box, then the data conduit at the far edge.
+upperChase.soilRadius=.0762/2;
+upperChase.soilX=masterCornerCover.x1-masterCornerCover.w+upperChase.soilRadius+.005;
+upperChase.boxX=upperChase.soilX+upperChase.soilRadius+.003+.1016/2;
+upperChase.dataX=masterCornerCover.x1-.008;
+// Conduits keep their panel spacing, compressed to fit the 8 in cover.
+const upperChaseX=x=>upperChase.boxX+(x-servicePanel.x)*upperChase.spread;
+// Owner-reported: a junction box sits inside the soffit at the foot of the chase.
+// A 2 × 4 in box, 2-1/2 in deep, fits flat between the beam and the soffit edge
+// against the slab underside. Power conduits from KT-SI enter its south side and
+// leave its top straight up into the cover, so each pull is split at the box.
+const soffitJunctionBox={x:upperChase.boxX,z:upperChase.z,w:.1016,d:.0508,h:.0635,top:upperChase.slabBottom};
+soffitJunctionBox.bottom=soffitJunctionBox.top-soffitJunctionBox.h;soffitJunctionBox.southZ=soffitJunctionBox.z+soffitJunctionBox.d/2;
+{
+ const b=soffitJunctionBox,note='Junction box inside the kitchen soffit at the foot of the master-bedroom corner chase, reported to you. Power conduits from KT-SI enter its side; conduits to the second floor leave its top. Box size, exact position and which conduits it serves are not confirmed.';
+ const m=box('electrical',0,b.x,(b.top+b.bottom)/2,b.z,b.w,b.h,b.d,plateMat,'Soffit junction box · foot of MB corner chase','User report',note);
+ Object.assign(m.userData,{soffitJunctionBox:true,concealed:true});
+}
+// The ceiling run converges on its box entry at a shallow angle, avoiding a short jog.
+const toUpperChase=(from,x=upperChaseX(from[0]))=>[from,[from[0],upperChase.ceilingY,from[2]],[x,upperChase.ceilingY,soffitJunctionBox.southZ]];
 const panelPort=id=>[servicePanel.x+(electricalCircuits.findIndex(c=>c.id===id)-3)*.03,servicePanel.y-.16,serviceRiser.z];
 const powerLevels=[-.04,2.86]; // Retained dedicated appliance routes.
 const floorChase={finishedLevels:[.25,3.10],centerDepth:.025,radius:conduitSpec.radius,wallOffset:.104};
@@ -830,11 +900,14 @@ for(const c of electricalCircuits.filter(c=>c.routing!=='ceiling')){
  const outlets=powerOutlets.filter(m=>m.userData.circuitId===c.id),floor=outlets[0].userData.floor,inChase=c.routing==='floor-chase';
  const level=inChase?floorChase.finishedLevels[floor]-floorChase.centerDepth:powerLevels[floor]+(electricalCircuits.indexOf(c)-3)*.008,port=panelPort(c.id);
  const routeData=inChase?{floorChaseY:level,finishCovered:true}:{underfloorY:level};
- const datum=[serviceRiser.x,3.10,serviceRiser.z];
- if(floor)circuitRoute(c.id,0,c.name+' · dedicated panel riser',[port,[port[0],2.90,port[2]],[datum[0],2.90,port[2]],datum],{via:'KT-SI ceiling',panelFeed:true,homeRun:c.dedicated});
+ // Upper circuits rise to the slab underside in the chase; the bend into the
+ // floor channel is swept within the slab, joined to each first floor run.
+ const riser=toUpperChase(port),datum=[riser.at(-1)[0],soffitJunctionBox.top,upperChase.z];
+ if(floor)circuitRoute(c.id,0,c.name+' · KT-SI to soffit junction box',riser,{via:upperChase.via,panelFeed:true,homeRun:c.dedicated,junctionBox:'soffit'});
  const start=floor?datum:port;
- const floorStart=[start[0],level,start[2]];
- circuitRoute(c.id,floor,c.name+' · panel floor feed',[start,floorStart],{panelFeed:true,homeRun:!!c.dedicated,...(floor?{via:'KT-SI passthrough'}:{}),...routeData});
+ const floorStart=[start[0],level,start[2]],feed=[start,floorStart],feedData={panelFeed:true,...(floor?{via:upperChase.via}:{})};
+ let feedJoined=false;
+ const withFeed=points=>{const first=points[0];if(Math.hypot(first[0]-floorStart[0],first[2]-floorStart[2])>1e-6)return [points,{}];feedJoined=true;return [[...feed,...points.slice(1)],feedData];};
  const routeOutlets=outlets.map(m=>{
   const face=propertyWallFaces.find(f=>f.code===m.userData.wallCode),wall=walls.find(w=>w.id===face.wallId);
   return {id:m.uuid,wallCode:m.userData.wallCode,wall,normal:face.axis==='x'?[face.normal,0]:[0,face.normal],exterior:face.type==='E',point:[m.position.x,m.position.z]};
@@ -842,10 +915,10 @@ for(const c of electricalCircuits.filter(c=>c.routing!=='ceiling')){
  const fedThrough=routeOutlets.filter(o=>routeOutlets.some(p=>p.wallCode===outletPassthroughs[o.wallCode]));
  const plan=planFloorConduits([floorStart[0],floorStart[2]],routeOutlets.filter(o=>!fedThrough.includes(o)),floorChase.wallOffset,{walls:floorWalls[floor],regions:floorRegions[floor],doorways:floorDoorways[floor]});
  const onFloor=p=>[p[0],level,p[1]];
- for(const link of plan.links)circuitRoute(c.id,floor,c.name+' · direct floor connection',link.points.map(onFloor),{wallId:link.wallId,directFloorLink:true,homeRun:!!c.dedicated,...routeData});
+ for(const link of plan.links){const [points,extra]=withFeed(link.points.map(onFloor));circuitRoute(c.id,floor,c.name+' · direct floor connection',points,{wallId:link.wallId,directFloorLink:true,homeRun:!!c.dedicated,...extra,...routeData});}
  for(const group of plan.groups){
-  const wallCodes=[...new Set(group.taps.map(t=>t.wallCode))];
-  circuitRoute(c.id,floor,'Shared wall-side floor channel · '+wallCodes.join(' / '),group.points.map(onFloor),{sharedTrunk:true,wallId:group.wallId,wallCodes,outletIds:group.taps.map(t=>t.id),wallOffset:floorChase.wallOffset,...routeData});
+  const wallCodes=[...new Set(group.taps.map(t=>t.wallCode))],[points,extra]=withFeed(group.points.map(onFloor));
+  circuitRoute(c.id,floor,'Shared wall-side floor channel · '+wallCodes.join(' / '),points,{...extra,sharedTrunk:true,wallId:group.wallId,wallCodes,outletIds:group.taps.map(t=>t.id),wallOffset:floorChase.wallOffset,...routeData});
   for(const tap of group.taps){
    // One floor-to-wall bend: rise in the wall-surface chase into the box bottom.
    const m=outlets.find(m=>m.uuid===tap.id),face=[m.position.x-tap.wallPoint[0],m.position.z-tap.wallPoint[1]],faceLength=Math.hypot(...face)||1;
@@ -853,6 +926,7 @@ for(const c of electricalCircuits.filter(c=>c.routing!=='ceiling')){
    circuitRoute(c.id,floor,'Floor-channel outlet rise · '+tap.wallCode,[onFloor(tap.point),onFloor(rise),[rise[0],boxBottom,rise[1]]],{outletId:m.uuid,wallCode:tap.wallCode,wallId:group.wallId,homeRun:!!c.dedicated,...routeData});
   }
  }
+ if(!feedJoined)circuitRoute(c.id,floor,c.name+' · panel floor feed',feed,{...feedData,homeRun:!!c.dedicated,...routeData});
  // A passthrough is its own conduit: down from the feeding box, across the floor
  // and up into the fed box, entering 30 mm beside that box's incoming rise.
  const outletChase=(o,shift=0)=>{
@@ -870,16 +944,16 @@ for(const c of electricalCircuits.filter(c=>c.routing!=='ceiling')){
 // A common lighting feed rises from KT-SI to both ceilings. Each ceiling is one
 // conduit tree of straight runs with junction boxes at tees; switch legs and the
 // stair two-way travelers share these conduits rather than parallel runs.
-const lightPort=panelPort('lighting'),lightRiserZ=serviceRiser.z,lightRiserX=serviceRiser.x;
-circuitRoute('lighting',0,'16 A lighting · panel to ground ceiling',[lightPort,[lightPort[0],2.90,lightRiserZ],[lightRiserX,2.90,lightRiserZ],[lightRiserX,3.10,lightRiserZ]],{via:'KT-SI ceiling',panelFeed:true});
-circuitRoute('lighting',1,'16 A lighting · upper ceiling riser',[[lightRiserX,3.10,lightRiserZ],[lightRiserX,5.65,lightRiserZ]],{panelFeed:true});
+const lightPort=panelPort('lighting'),lightRiserZ=upperChase.z,lightRiserX=upperChaseX(lightPort[0]);
+circuitRoute('lighting',0,'16 A lighting · KT-SI to soffit junction box',toUpperChase(lightPort),{via:upperChase.via,panelFeed:true,junctionBox:'soffit'});
+circuitRoute('lighting',1,'16 A lighting · upper ceiling riser',[[lightRiserX,soffitJunctionBox.top,lightRiserZ],[lightRiserX,5.65,lightRiserZ]],{panelFeed:true,junctionBox:'soffit'});
 // Runs stay under the slab above each ceiling: the ground ceiling has no slab
 // over the stair void or the open service area; the upper ceiling stops at the balcony.
 const ceilingRegions=[
  floorRegions[1],
  [{x0:0,x1:5.05,z0:-2.275,z1:2.325},{x0:2.55,x1:5.05,z0:2.325,z1:3.825},{x0:2.05,x1:5.05,z0:-3.825,z1:-2.275}]
 ];
-const ceilingSeeds=[[[[lightPort[0],lightRiserZ],[lightRiserX,lightRiserZ]]],[[[lightRiserX,lightRiserZ]]]];
+const ceilingSeeds=[[[[lightPort[0],lightPort[2]],[lightRiserX,soffitJunctionBox.southZ]]],[[[lightRiserX,lightRiserZ]]]];
 const ceilingPlans=[];
 for(const floor of [0,1]){
  const ceiling=floor?5.65:2.90,terminals=[];
@@ -938,7 +1012,7 @@ for(const connection of serviceConnectionRoutes){
 }
 
 // Owner-located data utility boxes and their explicit connection topology.
-const dataLines={boxes:[],routes:[],offset:.18,boxWidth:utilityBoxSize.width,boxHeight:utilityBoxSize.height,boxDepth:utilityBoxSize.depth,conduitRadius:conduitSpec.radius,via:'KT-SI passthrough'};
+const dataLines={boxes:[],routes:[],offset:.18,boxWidth:utilityBoxSize.width,boxHeight:utilityBoxSize.height,boxDepth:utilityBoxSize.depth,conduitRadius:conduitSpec.radius,via:'Door-to-door wall · soffit · MB corner chase'};
 const dataConduitMat=material(0xb89aff,.15),dataCoverMat=material(0xbcc6d7,.1);
 const dataNote='Embedded horizontal 2 × 4 in data utility box, 101.6 mm wide × 50.8 mm high with modeled 50.8 mm depth and a thin blank cover. Original positions and data connections are retained. Left/right is viewed from inside the room facing the wall. Box spacing (180 mm centers), floor-channel depth and concealed routing remain approximate.';
 function dataUtilityBox(id,code,reference,side,offset=dataLines.offset,anchor=reference.position){
@@ -988,7 +1062,7 @@ walls.filter(w=>dataPocketWalls.has(w.id)).forEach(buildWall);
 function dataRoute(from,to,floor,points,extra={}){
  const clean=points.filter((p,i)=>!i||p.some((v,j)=>Math.abs(v-points[i-1][j])>.00001));
  const name=`Data conduit · ${from.code} → ${to.code}`;
- const mesh=part(new THREE.TubeGeometry(roundedPipe(clean,.10),Math.max(24,(clean.length-1)*16),dataLines.conduitRadius,10,false),dataConduitMat,'data',floor,[0,0,0],name,'User description',conduitNote(false)+`Connects ${from.mesh.userData.name} to ${to.mesh.userData.name}. ${extra.via?'Rises through the KT-SI conduit passthrough channel. ':''}`+dataNote,false);
+ const mesh=part(new THREE.TubeGeometry(roundedPipe(clean,.10),Math.max(24,(clean.length-1)*16),dataLines.conduitRadius,10,false),dataConduitMat,'data',floor,[0,0,0],name,'User description',conduitNote(false)+`Connects ${from.mesh.userData.name} to ${to.mesh.userData.name}. ${extra.via?'Rises in the wall between the kitchen service door and the bathroom door, crosses the kitchen soffit and rises up the MB northwest corner chase. ':''}`+dataNote,false);
  const record={from:from.id,to:to.id,floor,points:clean,...conduitInfo(false),...extra};
  Object.assign(mesh.userData,{dataConduit:true,routePoints:clean,...record});dataLines.routes.push(record);
 }
@@ -1016,7 +1090,14 @@ function dataWallSideRun(from,to,channelX){
  return [from,[channelX,from[1],from[2]+sign*Math.abs(channelX-from[0])],[channelX,to[1],to[2]-sign*Math.abs(channelX-to[0])],to];
 }
 // Data rises in the guest-face chase of GR-NI, continuing on the master face above.
+// Owner's reading: the GR → MB data conduit rises in the wall between the
+// kitchen service door and the bathroom door, then crosses the soffit beneath
+// the junction box straight to the MB corner chase.
 const dataPass=[2.55-wallChaseOffset,3.10,bathroomPartition.a[1]+wallChaseOffset];
+const dataRiseWall=walls.find(w=>w.id==='g-bath-door'),serviceDoorEdge=openingById('service-door'),bathDoorEdge=openingById('ground-bath-door');
+const dataRise={x:dataRiseWall.a[0]+wallChaseOffset,z:((serviceDoorEdge.z+serviceDoorEdge.w/2)+(bathDoorEdge.z-bathDoorEdge.w/2))/2,topY:kitchenSoffit.bottom+kitchenSoffit.thickness+.02}; // low in the soffit, under the box and the soil-pipe elbow
+// In the chase the data conduit takes the cover's west lane, clear of the box.
+const dataChaseX=upperChase.dataX,dataChaseTop=[dataChaseX,upperChase.slabBottom,upperChase.z];
 {
  // Boxes in one room: straight floor run between the wall feet.
  const near=dataPort(dataLRNear),east=dataPort(dataLREast);
@@ -1028,10 +1109,11 @@ const dataPass=[2.55-wallChaseOffset,3.10,bathroomPartition.a[1]+wallChaseOffset
  dataRoute(dataLREast,dataGuest,0,[dataBottom(east),...dataWallSideRun(east.foot,guest.foot,east.tap[0]),dataBottom(guest)],{routingMode:'floor-chase',wallSideRun:true});
 }
 {
- // Up the KT-SI passthrough, then beside the master side of the partition to the hub.
- const guest=dataPort(dataGuest),hub=dataPort(dataMasterHub);
- dataRoute(dataGuest,dataMasterHub,0,[dataBottom(guest),...dataWallSideRun(guest.foot,[dataPass[0],dataFloorLevel(0),dataPass[2]],guest.tap[0]),dataPass],{via:dataLines.via,part:'lower'});
- dataRoute(dataGuest,dataMasterHub,1,[dataPass,...dataWallSideRun([dataPass[0],dataFloorLevel(1),dataPass[2]],hub.foot,hub.tap[0]),dataBottom(hub)],{via:dataLines.via,part:'upper'});
+ // Along the GR-WI channel, diagonally under the partition to the wall between
+ // the doors, up it, across the soffit and up the MB corner chase to the hub.
+ const guest=dataPort(dataGuest),hub=dataPort(dataMasterHub),along=dataWallSideRun(guest.foot,[guest.tap[0],dataFloorLevel(0),dataPass[2]],guest.tap[0]).slice(0,3);
+ dataRoute(dataGuest,dataMasterHub,0,[dataBottom(guest),...along,[dataRise.x,dataFloorLevel(0),dataRise.z],[dataRise.x,dataRise.topY,dataRise.z],[dataChaseX,dataRise.topY,upperChase.z],dataChaseTop],{via:dataLines.via,part:'lower'});
+ dataRoute(dataGuest,dataMasterHub,1,[dataChaseTop,...dataWallSideRun([dataChaseX,dataFloorLevel(1),upperChase.z],hub.foot,hub.tap[0]),dataBottom(hub)],{via:dataLines.via,part:'upper'});
 }
 {
  const hub=dataPort(dataMasterHub),east=dataPort(dataMasterEast);
@@ -1052,67 +1134,154 @@ function freshWater(f,name,points,extra={}){
  route('plumbing',f,points,freshWaterRadius,waterMat,name+' · 1/2 in','User correction · P-1',detail);
  objects.slice(start).forEach(m=>Object.assign(m.userData,{freshWater:true,diameter:.0127,routePoints:points,...extra}));freshWaterRoutes.push({floor:f,name,points,...extra});
 }
-const waterRiser={x:2.05,z:-2.275,groundY:-.08,upperY:2.90};
-freshWater(0,'Cold water supply',[[4.8,-.08,5.7],[4.8,-.08,-2.275],[waterRiser.x,-.08,waterRiser.z]]);
-freshWater(0,'Kitchen sink cold water',[[waterRiser.x,-.08,waterRiser.z],[waterRiser.x,-.08,-3.825],[kitchenCounter.sinkX,-.08,-3.825],[kitchenCounter.sinkX,1.1,-3.825],[kitchenCounter.sinkX,1.1,-3.5]]);
-freshWater(0,'Cold water riser to upper slab',[[waterRiser.x,-.08,waterRiser.z],[waterRiser.x,3.1,waterRiser.z]]);
-freshWater(1,'Upper bathroom supply',[[waterRiser.x,3.1,waterRiser.z],[waterRiser.x,2.90,waterRiser.z],[waterRiser.x,2.90,-3.825]]);
+// Owner-observed: the supply rises from the ground exposed on B0-NE, between
+// W5 and the kitchen-service corner, then enters below the second-floor slab
+// at the kitchen service wall to feed B1. B0 is fed from the riser foot.
+const waterRiserWall=walls.find(w=>w.id==='g-bath-rear'),waterRiserWindow=reviewedOpenings.find(o=>o.id==='ground-bath-window');
+const waterRiser={wallCode:'B0-NE',wallId:waterRiserWall.id,x:(waterRiserWindow.x+waterRiserWindow.w/2+walls.find(w=>w.id==='g-service').a[0]-.075)/2,z:waterRiserWall.a[1]-.075-.025,groundY:-.08,upperY:2.90};
+const waterHubs=[waterRiser,{x:walls.find(w=>w.id==='g-service').a[0],z:waterRiser.z}];
+// Owner-observed: the supply enters through LR-SE just below the west
+// (exterior) data utility box, drops inside the wall and runs underfloor.
+const waterInlet={wallCode:'LR-SE',x:dataLRExterior.wallPoint[0],y:dataLRExterior.wallPoint[1]-dataLines.boxHeight/2-.10,wallZ:frontWallZ,outsideZ:frontWallZ+.075+.04,buriedY:-.30,streetZ:8.0};
+freshWater(0,'Cold water supply · street to LR-SE inlet',[[waterInlet.x,waterInlet.buriedY,waterInlet.streetZ],[waterInlet.x,waterInlet.buriedY,waterInlet.outsideZ],[waterInlet.x,waterInlet.y,waterInlet.outsideZ],[waterInlet.x,waterInlet.y,waterInlet.wallZ]],{waterInlet:true,wallCode:waterInlet.wallCode});
+freshWater(0,'Cold water supply',[[waterInlet.x,waterInlet.y,waterInlet.wallZ],[waterInlet.x,-.08,waterInlet.wallZ],[waterInlet.x,-.08,waterRiser.z],[waterRiser.x,-.08,waterRiser.z]]);
+freshWater(0,'Kitchen sink cold water',[[kitchenCounter.sinkX,-.08,waterRiser.z],[kitchenCounter.sinkX,-.08,-3.825],[kitchenCounter.sinkX,1.1,-3.825],[kitchenCounter.sinkX,1.1,-3.5]]);
+freshWater(0,'Cold water riser · exposed on B0-NE',[[waterRiser.x,waterRiser.groundY,waterRiser.z],[waterRiser.x,waterRiser.upperY,waterRiser.z]],{exposedRiser:true,wallCode:waterRiser.wallCode});
+freshWater(1,'Upper bathroom supply',[[waterRiser.x,waterRiser.upperY,waterRiser.z],[waterHubs[1].x,waterRiser.upperY,waterHubs[1].z],[waterHubs[1].x,waterRiser.upperY,-3.825]]);
+// Faucet provision: a stub off a supply line ending in a valve body and spout.
+const faucetMat=material(0xc9ced1,.35),faucetProvisions=[];
+function faucetProvision(f,name,wallCode,from,to,detail){
+ freshWater(f,name+' · stub',[from,to],{faucetStub:true,wallCode});
+ const dir=new THREE.Vector3(...to).sub(new THREE.Vector3(...from)).normalize(),start=objects.length;
+ const body=new THREE.Vector3(...to).addScaledVector(dir,.025),spout=body.clone().addScaledVector(dir,.03);
+ box('plumbing',f,...body.toArray(),.04,.045,.04,faucetMat,name,'User correction',detail);
+ box('plumbing',f,body.x,body.y+.035,body.z,.06,.012,.012,faucetMat,name+' · handle','User correction',detail);
+ route('plumbing',f,[spout.toArray(),[spout.x,spout.y-.05,spout.z]],.008,faucetMat,name+' · spout','User correction',detail);
+ objects.slice(start).forEach(m=>Object.assign(m.userData,{faucetProvision:true,wallCode}));
+ faucetProvisions.push({floor:f,name,wallCode,from,to,body:body.toArray()});
+}
+// LR-SE exterior faucet between the data utility box and the service pull box,
+// teed off the inlet inside the wall.
+// Exterior faucets share one height, matching the B0-NE faucet.
+const exteriorFaucetY=.65,frontFaucetX=(dataLRExterior.wallPoint[0]+pullBoxSpec.x)/2;
+freshWater(0,'LR-SE faucet branch',[[waterInlet.x,waterInlet.y,waterInlet.wallZ],[frontFaucetX,waterInlet.y,waterInlet.wallZ],[frontFaucetX,exteriorFaucetY,waterInlet.wallZ]]);
+faucetProvision(0,'Exterior faucet provision · LR-SE','LR-SE',[frontFaucetX,exteriorFaucetY,waterInlet.wallZ],[frontFaucetX,exteriorFaucetY,waterInlet.wallZ+.075+.01],'Exterior faucet on LR-SE between the data utility box and the service pull box, teed off the water inlet inside the wall and set at the same height as the B0-NE faucet. Height is approximate.');
 const sanitaryStack={x:1.95,z:-2.2,upperBranchY:2.90};
+// Owner-observed: soil pipes and downpipes are 3 in (76.2 mm), shown at actual size.
+const soilPipeRadius=.0762/2,wastePipeRadius=.025;
 const upperSanitaryX=bathroomRoofWall.a[0]+.075+.075+.03;
 const sanitaryRoutes=[];
 function sanitaryRoute(floor,name,points,radius,extra={}){
  const start=objects.length;
- route('plumbing',floor,points,radius,wasteMat,name,'P-1 · User correction','Bathroom drains connect to the existing soil stack below the second-floor slab. Upper branches stay on the kitchen side of KT-WE; the Bathroom 1 vent connects to the B1 exterior exhaust. Concealed connections and displayed diameters remain schematic.');
+ route('plumbing',floor,points,radius,wasteMat,name,'P-1 · User correction','Bathroom drains connect to the existing soil stack below the second-floor slab. Upper branches stay on the kitchen side of KT-WE; the Bathroom 1 vent connects to the B1 exterior exhaust. Soil pipes are 3 in (76.2 mm) per your observation; 50 mm waste branches are shown at actual size. Concealed connections remain schematic.');
  objects.slice(start).forEach(m=>Object.assign(m.userData,{sanitary:true,routePoints:points,...extra}));sanitaryRoutes.push({floor,name,points,radius,...extra});
 }
 // Bathroom floors: 300 mm tiles, 10 mm thick, laid from the shower corner
 // between the wall faces.
 const wallById=id=>walls.find(w=>w.id===id),tileSize=.30,tileThickness=.01;
+// Shower lines [floor, shower x, fixture z]; the shower spans from the wall face
+// to 200 mm short of the water closet, which sits 750 mm along.
+const showerLines=[[0,.45,-1.9],[1,2.5,-3.5]],showerSpan=x=>x+.75-.2;
+// Owner-observed: B0 outside the shower is raised 20 mm above the shower floor.
 const bathroomTiles=[
- {floor:0,code:'B0',y:.24,x0:wallById('g-side').a[0]+.075,x1:wallById('g-bath-door').a[0]-.075,z0:wallById('g-bath-rear').a[1]+.075,z1:wallById('g-bath-south').a[1]-.075},
- {floor:1,code:'B1',y:3.1,x0:wallById('u-bath-side').a[0]+.075,x1:wallById('u-stair').a[0]-.075,z0:wallById('u-rear').a[1]+.075,z1:wallById('u-bath-south').a[1]-.075}
+ {floor:0,code:'B0',y:.19,dryRaise:.02,showerX1:showerSpan(showerLines[0][1]),x0:wallById('g-side').a[0]+.075,x1:wallById('g-bath-door').a[0]-.075,z0:wallById('g-bath-rear').a[1]+.075,z1:wallById('g-bath-south').a[1]-.075},
+ {floor:1,code:'B1',y:3.1,dryRaise:0,showerX1:showerSpan(showerLines[1][1]),x0:wallById('u-bath-side').a[0]+.075,x1:wallById('u-stair').a[0]-.075,z0:wallById('u-rear').a[1]+.075,z1:wallById('u-bath-south').a[1]-.075}
 ];
 const tileMat=material(0xe3e7e8);tileMat.roughness=.35;const groutMat=new THREE.LineBasicMaterial({color:0x7f8a90});
 for(const t of bathroomTiles){
- const w=t.x1-t.x0,d=t.z1-t.z0,cx=(t.x0+t.x1)/2,cz=(t.z0+t.z1)/2,top=tileThickness/2+.0005,points=[];
- for(let x=t.x0+tileSize;x<t.x1-1e-6;x+=tileSize)points.push(new THREE.Vector3(x-cx,top,-d/2),new THREE.Vector3(x-cx,top,d/2));
- for(let z=t.z0+tileSize;z<t.z1-1e-6;z+=tileSize)points.push(new THREE.Vector3(-w/2,top,z-cz),new THREE.Vector3(w/2,top,z-cz));
- const mesh=box('structure',t.floor,cx,t.y+tileThickness/2,cz,w,tileThickness,d,tileMat,`${t.code} · 300 mm floor tiles`,'User request',`300 × 300 mm floor tiles across the ${roomNames[t.code].toLowerCase()} floor, set out from the shower corner. Tile thickness and grout width are approximate.`);
- mesh.children.forEach(c=>c.visible=false);mesh.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points),groutMat));
- Object.assign(mesh.userData,{bathroomTiles:true,measurementKind:'floor',tileSize});t.mesh=mesh;
+ t.dryY=t.y+t.dryRaise;t.meshes=[];
+ // A raised dry area splits the floor at the shower edge; the grid stays continuous.
+ const regions=t.dryRaise?[[t.x0,t.showerX1,t.y,'shower area'],[t.showerX1,t.x1,t.dryY,'outside shower · raised 20 mm']]:[[t.x0,t.x1,t.y,null]];
+ for(const [x0,x1,y,label]of regions){
+  const w=x1-x0,d=t.z1-t.z0,cx=(x0+x1)/2,cz=(t.z0+t.z1)/2,top=tileThickness/2+.0005,points=[];
+  for(let x=t.x0+tileSize;x<x1-1e-6;x+=tileSize)if(x>x0+1e-6)points.push(new THREE.Vector3(x-cx,top,-d/2),new THREE.Vector3(x-cx,top,d/2));
+  for(let z=t.z0+tileSize;z<t.z1-1e-6;z+=tileSize)points.push(new THREE.Vector3(-w/2,top,z-cz),new THREE.Vector3(w/2,top,z-cz));
+  const note=`300 × 300 mm floor tiles across the ${roomNames[t.code].toLowerCase()} floor, set out from the shower corner.${t.dryRaise?' Outside the shower the floor is 20 mm higher than the shower floor.':''} Tile thickness and grout width are approximate.`;
+  const mesh=box('structure',t.floor,cx,y+tileThickness/2,cz,w,tileThickness,d,tileMat,`${t.code} · 300 mm floor tiles${label?' · '+label:''}`,'User request',note);
+  mesh.children.forEach(c=>c.visible=false);mesh.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points),groutMat));
+  Object.assign(mesh.userData,{bathroomTiles:true,measurementKind:'floor',tileSize,...(label?{tileRegion:label}:{})});t.meshes.push(mesh);
+  if(y>t.y)box('structure',t.floor,cx,(t.y+y)/2,cz,w,y-t.y,d,mats.concrete,`${t.code} · 20 mm raised screed outside shower`,'User correction',note);
+ }
+ t.mesh=t.meshes[0];
+}
+// Owner-observed wall tiling: 250 × 200 mm tiles laid horizontally, in stack
+// bond, to 1.40 m above the shower floor on every bathroom wall face. Doors
+// interrupt the tiling; windows sit above it.
+const wallTile={w:.25,h:.20,height:1.40,thickness:.008};
+// Wall tiles follow the wall-opacity slider like the walls they cover.
+const wallTileMat=tileMat.clone(),wallGroutMat=groutMat.clone();
+Object.assign(wallTileMat,{transparent:true,opacity:state.opacity,depthWrite:false});Object.assign(wallGroutMat,{transparent:true,opacity:state.opacity});
+wallMaterials.push(wallTileMat);
+const wallTileRoutes=[];
+for(const t of bathroomTiles){
+ const y0=t.y+tileThickness,y1=y0+wallTile.height;
+ // [wall id, fixed coordinate, axis along, start, end, inward normal sign]
+ const faces=[
+  [bathroomTiles.indexOf(t)?'u-rear':'g-bath-rear','z',t.z0,t.x0,t.x1,1],
+  [bathroomTiles.indexOf(t)?'u-bath-south':'g-bath-south','z',t.z1,t.x0,t.x1,-1],
+  [bathroomTiles.indexOf(t)?'u-bath-side':'g-side','x',t.x0,t.z0,t.z1,1],
+  [bathroomTiles.indexOf(t)?'u-stair':'g-bath-door','x',t.x1,t.z0,t.z1,-1]
+ ];
+ for(const [wallId,fixedAxis,fixed,start,end,inward]of faces){
+  const doors=reviewedOpenings.filter(o=>o.wall===wallId&&o.system==='doors').map(o=>{const c=fixedAxis==='z'?o.x:o.z;return [c-o.w/2,c+o.w/2];});
+  const spans=[];let from=start;
+  for(const [a,b]of doors.sort((p,q)=>p[0]-q[0])){if(a>from)spans.push([from,Math.min(a,end)]);from=Math.max(from,b);}
+  if(from<end)spans.push([from,end]);
+  for(const [a,b]of spans){
+   const len=b-a,mid=(a+b)/2,offset=fixed+inward*wallTile.thickness/2,top=wallTile.thickness/2+.0005,points=[];
+   // Local frame: box width runs along the wall; grout sits on the room face.
+   const P=(u,v)=>fixedAxis==='z'?new THREE.Vector3(u-mid,v,inward*top):new THREE.Vector3(inward*top,v,u-mid);
+   for(let u=start+wallTile.w;u<b-1e-6;u+=wallTile.w)if(u>a+1e-6)points.push(P(u,-wallTile.height/2),P(u,wallTile.height/2));
+   for(let v=wallTile.h;v<wallTile.height-1e-6;v+=wallTile.h)points.push(P(a,v-wallTile.height/2),P(b,v-wallTile.height/2));
+   const [x,z]=fixedAxis==='z'?[mid,offset]:[offset,mid];
+   const note=`250 × 200 mm wall tiles laid horizontally to 1.40 m above the ${t.code} shower floor. Grout joints, tile thickness and set-out are approximate.`;
+   const mesh=box('structure',t.floor,x,(y0+y1)/2,z,fixedAxis==='z'?len:wallTile.thickness,wallTile.height,fixedAxis==='z'?wallTile.thickness:len,wallTileMat,`${t.code} · 250 × 200 mm wall tiles`,'User request',note);
+   mesh.children.forEach(c=>c.visible=false);mesh.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points),wallGroutMat));
+   Object.assign(mesh.userData,{bathroomWallTiles:true,wallId,tileSize:[wallTile.w,wallTile.h]});
+   wallTileRoutes.push({code:t.code,wallId,from:a,to:b});
+  }
+ }
 }
 // Shower floor drains: one per bathroom, centred across the shower area and
 // 450 mm out from the north wall face.
 const showerDrains=[],showerGrateMat=material(0x7c898f,.65),showerDrainRecessMat=material(0x243038);
-for(const[f,x,z]of [[0,.45,-1.9],[1,2.5,-3.5]]){
- const y=bathroomTiles[f].y,wallZ=f?-3.825:-2.275,supplyY=f?2.90:-.08;
- freshWater(f,'Bathroom underfloor distribution',[[waterRiser.x,supplyY,waterRiser.z],[waterRiser.x,supplyY,wallZ],[x,supplyY,wallZ]]);
+for(const[f,x,z]of showerLines){
+ const y=bathroomTiles[f].y,dryY=bathroomTiles[f].dryY,wallZ=f?-3.825:-2.275,supplyY=f?2.90:-.08;
+ freshWater(f,'Bathroom underfloor distribution',[[waterHubs[f].x,supplyY,waterHubs[f].z],[waterHubs[f].x,supplyY,wallZ],[x,supplyY,wallZ]]);
  freshWater(f,'Shower concealed wall supply',[[x,supplyY,wallZ],[x,y+1.95,wallZ],[x,y+1.95,wallZ+.14]],{showerSupply:true,wallId:f?'u-rear':'g-bath-rear'});
- const tx=x+.75;box('plumbing',f,tx,y+.32,z,.4,.45,.56,fixtureMat,'Water closet','P-1','Simplified fixture at an approximate location from the bathroom plan.');box('plumbing',f,tx,y+.62,z-.14,.4,.4,.18,fixtureMat,'Water closet cistern','P-1');
- box('plumbing',f,tx+.55,y+.8,z,.45,.13,.37,fixtureMat,'Lavatory','P-1');
+ // Each shower line has its own faucet; B0 also has an exterior faucet on
+ // B0-NE directly behind the line.
+ const code=f?'B1':'B0';
+ faucetProvision(f,`Shower faucet provision · ${code}-NI`,`${code}-NI`,[x,y+.60,wallZ],[x,y+.60,wallZ+.075+.01],`Faucet provision on the ${code} shower line, 600 mm above the tiled floor. Height and valve type are approximate.`);
+ if(!f){
+  faucetProvision(0,'Exterior faucet provision · B0-NE','B0-NE',[x,exteriorFaucetY,wallZ],[x,exteriorFaucetY,wallZ-.075-.01],'Exterior faucet on B0-NE directly behind the B0 shower line, teed off it through the wall. Height and valve type are approximate.');
+ }
+ const tx=x+.75;box('plumbing',f,tx,dryY+.32,z,.4,.45,.56,fixtureMat,'Water closet','P-1','Simplified fixture at an approximate location from the bathroom plan.');box('plumbing',f,tx,dryY+.62,z-.14,.4,.4,.18,fixtureMat,'Water closet cistern','P-1');
+ // Owner-measured: wall-hung lavatory, 400 mm wide × 340 mm deep, on the north wall.
+ const lav={w:.40,d:.34,top:dryY+.82,x:Math.min(tx+.55,bathroomTiles[f].x1-.20-.02)};lav.z=bathroomTiles[f].z0+lav.d/2;
+ box('plumbing',f,lav.x,lav.top-.075,lav.z,lav.w,.15,lav.d,fixtureMat,'Lavatory · wall-hung','User correction','Wall-hung lavatory, 400 mm wide × 340 mm deep, attached to the north wall. Mounting height is approximate.').userData.lavatory={width:lav.w,depth:lav.d};
  const branchY=f?sanitaryStack.upperBranchY:y-.2,collectorX=f?upperSanitaryX:sanitaryStack.x;
  const collector=[collectorX,branchY,z],junction=[sanitaryStack.x,branchY,sanitaryStack.z];
- sanitaryRoute(f,'Bathroom waste branch · 50 mm nominal',[[tx+.55,y+.7,z],[tx+.55,branchY,z],collector],.065,{bathroomWaste:true});
- sanitaryRoute(f,'Soil branch · 100 mm nominal',[[tx,y+.1,z],[tx,branchY,z],collector,[collectorX,branchY,sanitaryStack.z],junction],.075,{bathroomSoil:true});
+ sanitaryRoute(f,'Bathroom waste branch · 50 mm nominal',[[lav.x,lav.top-.15,lav.z],[lav.x,branchY,lav.z],[lav.x,branchY,z],collector],wastePipeRadius,{bathroomWaste:true});
+ sanitaryRoute(f,'Soil branch · 3 in',[[tx,dryY+.1,z],[tx,branchY,z],collector,[collectorX,branchY,sanitaryStack.z],junction],soilPipeRadius,{bathroomSoil:true});
  // The shower spans from the wall face to the water closet.
- const showerX0=bathroomTiles[f].x0,showerX1=tx-.2;
+ const showerX0=bathroomTiles[f].x0,showerX1=bathroomTiles[f].showerX1;
  const drain={floor:f,x:(showerX0+showerX1)/2,z:wallZ+.075+.45,floorY:y+tileThickness,size:.15};showerDrains.push(drain);
  const drainNote='Shower floor drain centred in the shower area, set in the tiled floor. It drains through a 50 mm branch to the bathroom collector. Grate size and position are approximate.',drainStart=objects.length;
  box('plumbing',f,drain.x,drain.floorY+.002,drain.z,drain.size,.002,drain.size,showerDrainRecessMat,'Shower floor drain','User request',drainNote);
  for(const side of [-1,1]){box('plumbing',f,drain.x+side*(drain.size-.014)/2,drain.floorY+.005,drain.z,.014,.006,drain.size,showerGrateMat,'Shower drain grate · frame','User request',drainNote);box('plumbing',f,drain.x,drain.floorY+.005,drain.z+side*(drain.size-.014)/2,drain.size-.028,.006,.014,showerGrateMat,'Shower drain grate · frame','User request',drainNote);}
  for(let i=-2;i<=2;i++)box('plumbing',f,drain.x+i*.022,drain.floorY+.005,drain.z,.008,.006,drain.size-.028,showerGrateMat,'Shower drain grate · bar','User request',drainNote);
  objects.slice(drainStart).forEach(m=>m.userData.showerDrain=true);
- sanitaryRoute(f,'Shower floor drain branch · 50 mm nominal',[[drain.x,drain.floorY,drain.z],[drain.x,branchY,drain.z],[drain.x,branchY,z],collector],.065,{showerDrain:true});
- for(const [fixtureX,height]of [[tx,.55],[tx+.55,.70]])freshWater(f,'Bathroom fixture supply',[[waterRiser.x,supplyY,wallZ],[fixtureX,supplyY,wallZ],[fixtureX,supplyY,z],[fixtureX,y+height,z]]);
+ sanitaryRoute(f,'Shower floor drain branch · 50 mm nominal',[[drain.x,drain.floorY,drain.z],[drain.x,branchY,drain.z],[drain.x,branchY,z],collector],wastePipeRadius,{showerDrain:true});
+ freshWater(f,'Bathroom fixture supply',[[waterHubs[f].x,supplyY,wallZ],[tx,supplyY,wallZ],[tx,supplyY,z],[tx,dryY+.55,z]]);
+ freshWater(f,'Lavatory supply',[[waterHubs[f].x,supplyY,wallZ],[lav.x,supplyY,wallZ],[lav.x,lav.top-.25,wallZ],[lav.x,lav.top-.25,lav.z-lav.d/2+.04]]);
 }
 box('plumbing',0,kitchenCounter.sinkX,1.05,kitchenCounter.sink.z,kitchenCounter.sink.width,.16,kitchenCounter.sink.depth,fixtureMat,'Kitchen sink','A-4 · P-1','Sink contained within the approximate counter footprint used to show the reported 500 mm stair clearance. Sink profile and exact center offset are approximate.');
-route('plumbing',0,[[kitchenCounter.sinkX,.98,-3.5],[kitchenCounter.sinkX,-.1,-3.5],[1.95,-.1,-2.2],[1.95,-.42,2.3]],.06,wasteMat,'Kitchen waste / soil main','P-1',pNote);
-route('plumbing',0,[[1.95,-.2,-2.2],[1.95,3.025,-2.2]],.075,wasteMat,'Soil stack · lower','P-1',pNote);
+route('plumbing',0,[[kitchenCounter.sinkX,.98,-3.5],[kitchenCounter.sinkX,-.1,-3.5],[1.95,-.1,-2.2],[1.95,-.42,2.3]],soilPipeRadius,wasteMat,'Kitchen waste / soil main','P-1',pNote);
+// The stack tops out at the B1 branch junction; the B1 soil pipe vents it.
+route('plumbing',0,[[1.95,-.2,-2.2],[1.95,sanitaryStack.upperBranchY,-2.2]],soilPipeRadius,wasteMat,'Soil stack · lower','P-1',pNote);
 const soilExitWall=walls.find(w=>w.id==='g-bath-rear');
 const soilExit={wallCode:'B0-NE',wallId:soilExitWall.id,x:(soilExitWall.a[0]+soilExitWall.b[0])/2,y:3.025,z:soilExitWall.a[1]-.075-.30};
-const soilExhaustPoints=[[1.95,soilExit.y,-2.2],[soilExit.x,soilExit.y,-2.2],[soilExit.x,soilExit.y,soilExit.z]];
-const soilExhaust=part(new THREE.TubeGeometry(roundedPipe(soilExhaustPoints,.12),40,.075,12,false),wasteMat,'plumbing',0,[0,0,0],'Soil stack · B0-NE exterior exit','User correction','Soil pipe exits north through B0-NE into the service area. The horizontal run ends at the midpoint of B0-NE, then turns north through the wall. The stack remains below the second-floor slab top. Exit projection remains schematic.',false);
-Object.assign(soilExhaust.userData,{soilExhaust:true,wallCode:soilExit.wallCode,wallId:soilExit.wallId,routePoints:soilExhaustPoints,outletDirection:[0,0,-1]});
 const siteDrainagePoints=[[-.2,-.16,-2.25],[-.2,-.4,3.8],[-.2,-.45,5.8]];
 const westDrainJunctionZ=-.8,westDrainJunctionT=(westDrainJunctionZ-siteDrainagePoints[0][2])/(siteDrainagePoints[1][2]-siteDrainagePoints[0][2]);
 const westDrainJunction=[siteDrainagePoints[0][0],THREE.MathUtils.lerp(siteDrainagePoints[0][1],siteDrainagePoints[1][1],westDrainJunctionT),westDrainJunctionZ];
@@ -1122,6 +1291,14 @@ const tankMat=material(0x746d9e);tankMat.transparent=true;tankMat.opacity=.38;ta
 // The tank roof sits 200 mm below grade so the cleanout riser reaches the surface.
 const septicTank={x:1.7,z:3.0,w:1.5,d:2.1,top:-.2,bottom:-.9};
 box('plumbing',0,septicTank.x,(septicTank.top+septicTank.bottom)/2,septicTank.z,septicTank.w,septicTank.top-septicTank.bottom,septicTank.d,tankMat,'Septic tank','P-1','Simplified 2.10 × 1.50 m tank envelope; depth and exact position are approximate.');
+// Owner's reading: the pipe leaving B0-NE is the septic tank vent, not the soil
+// stack. It leaves the tank roof at the inlet end, runs north under the floor
+// beside the sanitary main, rises in the B0 corner beside the stack and turns out
+// through the midpoint of B0-NE at the previously observed height.
+const septicVent={x:sanitaryStack.x-.10,runY:-.12,riseZ:sanitaryStack.z,tankZ:septicTank.z-septicTank.d/2+.10}; // clear of the cleanout riser
+const soilExhaustPoints=[[septicVent.x,septicTank.top,septicVent.tankZ],[septicVent.x,septicVent.runY,septicVent.tankZ],[septicVent.x,septicVent.runY,septicVent.riseZ],[septicVent.x,soilExit.y,septicVent.riseZ],[soilExit.x,soilExit.y,septicVent.riseZ],[soilExit.x,soilExit.y,soilExit.z]];
+const soilExhaust=part(new THREE.TubeGeometry(roundedPipe(soilExhaustPoints,.12),160,soilPipeRadius,12,false),wasteMat,'plumbing',0,[0,0,0],'Septic tank vent · B0-NE exterior exit','User correction','Septic tank vent: leaves the tank roof at the inlet end, runs under the floor beside the sanitary main, rises in the B0 corner beside the soil stack and exits north through the midpoint of B0-NE. The exit height and position are as observed; the buried route, riser position and 3 in size are assumed.',false);
+Object.assign(soilExhaust.userData,{soilExhaust:true,septicVent:true,wallCode:soilExit.wallCode,wallId:soilExit.wallId,routePoints:soilExhaustPoints,outletDirection:[0,0,-1]});
 // Maintenance cleanout: a riser from the tank roof over the inlet end, closed
 // by a removable cover flush with the carport surface.
 const septicCleanout={x:septicTank.x+.25,z:septicTank.z-septicTank.d/2+.45,size:.50,cover:.60};
@@ -1147,9 +1324,9 @@ function roundedPipe(points,radius=.10){
 }
 // Viewed from the service area toward B1-EE, the right corner is north.
 const westDrainWall=walls.find(w=>w.id==='u-bath-side');
-const westRoofDrain={wallCode:'B1-EE',wallId:westDrainWall.id,radius:.045,x:westDrainWall.a[0]-.075-.045-.065,z:westDrainWall.a[1]+.125,buriedY:-.18,junction:westDrainJunction};
+const westRoofDrain={wallCode:'B1-EE',wallId:westDrainWall.id,radius:carportDrain.diameter/2,x:westDrainWall.a[0]-.075-.11,z:westDrainWall.a[1]+.125,buriedY:-.18,junction:westDrainJunction};
 const westDrainRoofY=westRoofHeightAt(westRoofDrain.z)+.14;
-const westRoofDrainNote='West roof drains through B1-EE near its right/north corner, viewed from outside. The downpipe continues below the service-area floor and connects to the existing underground site drain. The 90 mm displayed pipe diameter, corner offset, wall clearance and buried depths are schematic.';
+const westRoofDrainNote='West roof drains through B1-EE near its right/north corner, viewed from outside. The downpipe continues below the service-area floor and connects to the existing underground site drain. The downpipe is 3 in (76.2 mm) per your observation. Corner offset, wall clearance and buried depths are schematic.';
 const westRoofDrainUpperPoints=[
  [westDrainWall.a[0]+.14,westDrainRoofY,westRoofDrain.z],
  [westDrainWall.a[0]+.14,westDrainRoofY-.18,westRoofDrain.z],
@@ -1163,16 +1340,19 @@ for(const [floor,points,name]of [[1,westRoofDrainUpperPoints,'West roof downpipe
 }
 // Additional owner-observed sanitary outlet beside the upper B1-EE elbow.
 // Connect the upper bathroom vent to the observed B1 wall penetration.
-const upperSoilExit={wallCode:'B1-EE',wallId:westDrainWall.id,x:westDrainWall.a[0]-.075-.30,y:westRoofDrainUpperPoints[2][1],z:westRoofDrain.z+.25,radius:.075};
-const upperSoilExhaustPoints=[[upperSanitaryX,upperSoilExit.y,upperSoilExit.z],[upperSoilExit.x,upperSoilExit.y,upperSoilExit.z]];
-const upperSoilExhaust=part(new THREE.TubeGeometry(roundedPipe(upperSoilExhaustPoints),8,upperSoilExit.radius,12,false),wasteMat,'plumbing',1,[0,0,0],'Soil pipe exhaust · B1-EE','User correction','Additional soil-pipe exhaust through B1-EE beside the upper downpipe elbow. Shown at the elbow height, 250 mm toward the south along the wall. The spacing, 300 mm exterior projection and displayed diameter are approximate; its interior vent joins the Bathroom 1 soil branch below the slab.',false);
+const upperSoilExit={wallCode:'B1-EE',wallId:westDrainWall.id,x:westDrainWall.a[0]-.075-.30,y:westRoofDrainUpperPoints[2][1],z:westRoofDrain.z+.25,radius:soilPipeRadius};
+const upperSoilExhaustPoints=[[westDrainWall.a[0],upperSoilExit.y,upperSoilExit.z],[upperSoilExit.x,upperSoilExit.y,upperSoilExit.z]];
+const upperSoilExhaust=part(new THREE.TubeGeometry(roundedPipe(upperSoilExhaustPoints),8,upperSoilExit.radius,12,false),wasteMat,'plumbing',1,[0,0,0],'Soil pipe exhaust · B1-EE','User correction','Additional soil-pipe exhaust through B1-EE beside the upper downpipe elbow. Shown at the elbow height, 250 mm toward the south along the wall. The spacing and 300 mm exterior projection are approximate. Inside, it connects to the 3 in B1 soil pipe that rises through the MB northwest corner cover.',false);
 Object.assign(upperSoilExhaust.userData,{soilExhaust:true,additionalSoilExhaust:true,wallCode:upperSoilExit.wallCode,wallId:upperSoilExit.wallId,routePoints:upperSoilExhaustPoints,outletDirection:[-1,0,0]});
 const upperSoilBranch=sanitaryRoutes.find(r=>r.floor===1&&r.bathroomSoil);
-// The vent rises in the B1 northwest corner (beside B1-EE and the north wall),
-// then runs along B1-EE at exit height to the observed wall penetration.
-const upperVentCornerZ=bathroomTiles[1].z0+upperSoilExit.radius+.03;
-const upperVentPoints=[upperSoilBranch.points[2],[upperSanitaryX,sanitaryStack.upperBranchY,upperVentCornerZ],[upperSanitaryX,upperSoilExit.y,upperVentCornerZ],upperSoilExhaustPoints[0]];
-sanitaryRoute(1,'Bathroom 1 soil vent · connects to B1 exhaust',upperVentPoints,upperSoilExit.radius,{bathroomVent:true});
+// Owner's reading: the B1 soil pipe rises through the MB northwest corner cover,
+// not the B1 corner. It tees off the soil branch where it turns toward the stack,
+// offsets up through the slab into the cover's east lane, climbs above the flat
+// ceiling and runs diagonally over the B1 ceiling, rising gently to the observed
+// B1-EE penetration (clear of the downpipe crossing further north).
+const upperVentRiser={location:'MB northwest corner cover',x:upperChase.soilX,z:upperChase.z,runY:upperCeiling.y+.10};
+const upperVentPoints=[upperSoilBranch.points[3],[upperVentRiser.x,upperChase.slabTop,upperVentRiser.z],[upperVentRiser.x,upperVentRiser.runY,upperVentRiser.z],upperSoilExhaustPoints[0]];
+sanitaryRoute(1,'Bathroom 1 soil pipe · via MB corner cover',upperVentPoints,upperSoilExit.radius,{bathroomVent:true,chase:upperVentRiser.location});
 // East-roof outlet drops on BL-NI beside its east corner, then turns only
 // after passing through the balcony slab to the existing CP-EI downpipe.
 const balconyDrainWall=walls.find(w=>w.id==='u-balcony');
@@ -1194,22 +1374,27 @@ for(const [floor,points,name,variant]of [[1,eastRoofDrainUpperPoints,'East roof 
  const m=part(new THREE.TubeGeometry(roundedPipe(points,.10),100,eastRoofDrain.radius,16,false),drainMat,'plumbing',floor,[0,0,0],name,'User correction',eastRoofDrainNote,false);
  Object.assign(m.userData,{eastRoofDownpipe:true,wallCode:floor?'BL-NI':'CP-EI',routePoints:points,...(variant?{roofVariant:variant}:{})});
 }
-// Southeast balcony floor drain sits directly above CP-EI. The east-roof
-// branch joins this straight drop at a tee below the balcony slab.
-const balconyFloorDrain={x:carportDrain.pipeX,z:carportDrain.wallZ,floorY:eastRoofDrain.slabTop,size:.18,radius:eastRoofDrain.radius,teeY:eastRoofDrain.underSlabY,joinY:eastRoofDrain.joinY};
-const balconyFloorDrainNote='Balcony drains at the southeast corner, directly above the CP-EI downpipe. Its outlet drops vertically through the slab; the east-roof branch joins it at a tee below the balcony floor. Drain/grate dimensions and corner offsets are schematic.';
+// Owner-observed: the balcony floor drain centre sits 400 mm from the east
+// balcony edge and 400 mm from the MB-SI wall face. Its outlet drops through
+// the slab and tees into the east-roof run beneath the balcony.
+const balconyFloorDrain={x:.40,z:balconyDrainWall.a[1]+.075+.40,floorY:eastRoofDrain.slabTop,size:.18,radius:eastRoofDrain.radius,teeY:eastRoofDrain.underSlabY,joinY:eastRoofDrain.joinY};
+const balconyFloorDrainNote='Balcony floor drain centred 400 mm from the east balcony edge and 400 mm from the master-bedroom wall face, per your observation. Its 3 in outlet drops through the slab and tees into the east-roof downpipe run beneath the balcony, which continues down CP-EI. Drain/grate dimensions are schematic.';
 const floorDrainStart=objects.length,fd=balconyFloorDrain;
 const grateMat=material(0x7c898f,.65),drainRecessMat=material(0x243038);
-box('plumbing',1,fd.x,fd.floorY+.001,fd.z,fd.size,.002,fd.size,drainRecessMat,'Balcony floor drain · southeast corner','User correction',balconyFloorDrainNote);
+box('plumbing',1,fd.x,fd.floorY+.001,fd.z,fd.size,.002,fd.size,drainRecessMat,'Balcony floor drain','User correction',balconyFloorDrainNote);
 for(const side of [-1,1]){
  box('plumbing',1,fd.x+side*(fd.size-.016)/2,fd.floorY+.004,fd.z,.016,.006,fd.size,grateMat,'Balcony drain grate · frame','User correction',balconyFloorDrainNote);
  box('plumbing',1,fd.x,fd.floorY+.004,fd.z+side*(fd.size-.016)/2,fd.size-.032,.006,.016,grateMat,'Balcony drain grate · frame','User correction',balconyFloorDrainNote);
 }
 for(let i=-2;i<=2;i++)box('plumbing',1,fd.x+i*.026,fd.floorY+.004,fd.z,.009,.006,fd.size-.032,grateMat,'Balcony drain grate · bar','User correction',balconyFloorDrainNote);
-objects.slice(floorDrainStart).forEach(m=>Object.assign(m.userData,{balconyFloorDrain:true,drainLocation:'southeast balcony corner'}));
-const balconyDrainDropPoints=[[fd.x,fd.floorY,fd.z],[fd.x,fd.teeY,fd.z],[fd.x,fd.joinY,fd.z]];
+objects.slice(floorDrainStart).forEach(m=>Object.assign(m.userData,{balconyFloorDrain:true,drainLocation:'400 mm from east edge and MB-SI'}));
+const balconyDrainDropPoints=[[fd.x,fd.floorY,fd.z],[fd.x,fd.teeY,fd.z],[eastRoofDrain.x,fd.teeY,fd.z]];
+// With the floor drain moved off the downpipe, the east-roof run carries the drop to CP-EI.
+const eastRoofDropStart=objects.length,eastRoofDropPoints=[[carportDrain.pipeX,fd.teeY,carportDrain.wallZ],[carportDrain.pipeX,fd.joinY,carportDrain.wallZ]];
+route('plumbing',0,eastRoofDropPoints,fd.radius,drainMat,'East roof downpipe · drop to CP-EI','User correction',eastRoofDrainNote);
+objects.slice(eastRoofDropStart).forEach(m=>Object.assign(m.userData,{eastRoofDownpipe:true,wallCode:'CP-EI',routePoints:eastRoofDropPoints}));
 const balconyDrainDropStart=objects.length;
-route('plumbing',0,balconyDrainDropPoints,fd.radius,drainMat,'Balcony floor drain · direct drop to CP-EI','User correction',balconyFloorDrainNote);
+route('plumbing',0,balconyDrainDropPoints,fd.radius,drainMat,'Balcony floor drain · branch to east-roof run','User correction',balconyFloorDrainNote);
 objects.slice(balconyDrainDropStart).forEach(m=>Object.assign(m.userData,{balconyDrainDrop:true,routePoints:balconyDrainDropPoints}));
 // Mirrored property: west is increasing model x; north is decreasing z.
 // Keep the pipe outer edge 10 mm clear of both inside basin faces.
@@ -1442,6 +1627,7 @@ function sync(){
  document.querySelector('[data-view="top"]').title='Plot plan · north up';
  for(const[id]of defs)systems[id].forEach((g,f)=>{g.visible=state.layers[id]&&(state.level==='all'||f===Number(state.level)||(f===2&&state.level==='1'));g.position.y=f===2?state.explode*2:f*state.explode;});
  wallMaterials.forEach(m=>{m.opacity=state.opacity;m.visible=state.opacity>0;m.depthWrite=state.opacity>=.99;});
+ wallGroutMat.opacity=state.opacity;wallGroutMat.visible=state.opacity>0;
  objects.filter(m=>m.userData.isWall).forEach(m=>{m.material=m.userData.floor?photoUpperWall:photoLowerWall;m.children.forEach(c=>{if(c.isLineSegments)c.material.opacity=right&&state.opacity>.95?.12:.48;});});
  mats.door.color.set(0xe9e7df);frameMat.color.set(0xe4e3db);frameMat.metalness=.15;
  mats.glass.color.set(0x869b9f);railMat.color.set(0x353237);skinMat.color.set(0x484348);
@@ -1650,7 +1836,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
  }
  const hits=raycaster.intersectObjects(objects,false).filter(h=>isVisible(h.object)&&(activeUnit().end||h.point.x>=activeUnit().west-.075&&h.point.x<=activeUnit().east+.075));
  // Translucent walls remain a fallback so openings and fittings are reachable.
- const hit=(state.opacity<=.7?hits.find(h=>!h.object.userData.isWall):hits[0])??hits[0];
+ const hit=(state.opacity<=.7?hits.find(h=>!h.object.userData.isWall&&!h.object.userData.bathroomWallTiles&&!h.object.userData.upperCeiling):hits[0])??hits[0];
  if(hit)selectObject(hit.object,hit);else clearSelection();
 });
 viewport.addEventListener('keydown',e=>{if(e.key==='Escape')clearSelection();});
@@ -1784,5 +1970,5 @@ new ResizeObserver(()=>{if(state.plan&&planCamera2d.fit){planCamera2d.box=null;a
 const modelContext=document.modelContext;
 if(modelContext?.registerTool){const lifecycle=new AbortController();const tool={name:'configure_building_view',title:'Configure the building view',description:'Show chosen building systems and select a floor in the visible 3D model.',inputSchema:{type:'object',properties:{systems:{type:'array',items:{type:'string',enum:defs.map(d=>d[0])},uniqueItems:true},floor:{type:'string',enum:['all','0','1']}},required:['systems'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input){if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['systems','floor'].includes(k))||!Array.isArray(input.systems)||input.systems.some(id=>!defs.some(d=>d[0]===id))||new Set(input.systems).size!==input.systems.length||(input.floor!==undefined&&!['all','0','1'].includes(input.floor)))throw new Error('Choose valid systems and floor.');for(const id in state.layers)state.layers[id]=input.systems.includes(id);if(input.floor!==undefined)state.level=input.floor;clearSelection();sync();return {visibleSystems:defs.filter(d=>state.layers[d[0]]).map(d=>d[0]),floor:state.level};}};try{Promise.resolve(modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});}
 function resize(){const {width,height}=viewport.getBoundingClientRect();if(width<=0||height<=0)return;renderer.setSize(width,height,false);perspectiveCamera.aspect=width/height;perspectiveCamera.updateProjectionMatrix();const u=activeUnit(),bounds=state.scope==='block'?blockViewBounds():u;const span=Math.max(16,(bounds.depth+3),((bounds.width+3)/(width/height)));planCamera.left=-span*(width/height)/2;planCamera.right=-planCamera.left;planCamera.top=span/2;planCamera.bottom=-span/2;planCamera.updateProjectionMatrix();}new ResizeObserver(resize).observe(viewport);resize();setView('iso');sync();renderer.setAnimationLoop(()=>{controls.update();sizeSiteLabels();measurements.resize(camera,viewport.clientHeight,viewport.clientWidth);renderer.render(scene,camera);});
-window.townhouse={bathroomTiles,showerDrains,septicTank,septicCleanout,planStairs,entryCanopy,renderPlan,planRooms,conduitSpec,ceilingPlans,kitchenSoffit,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
+window.townhouse={bathroomTiles,wallTile,wallTileRoutes,showerDrains,septicTank,septicVent,septicCleanout,planStairs,entryCanopy,renderPlan,planRooms,conduitSpec,ceilingPlans,kitchenSoffit,groundBathCeiling,upperCeiling,kitchenSoffitMeshes,kitchenSoffitUnderside,utilityBoxSize,embeddedMounts,electricalRecesses,panelCover,pullBoxCover,sanitaryStack,upperSanitaryX,masterCornerCover,upperChase,soffitJunctionBox,waterRiser,waterInlet,faucetProvisions,sanitaryRoutes,upperVentPoints,masterRoofCutX,innerMainRoof,innerMainRoofOutline,innerMainRoofRegions,innerRoofUndersideAt,innerParapetHeight,balconyFirewall,balconyFirewallCoping,balconyFirewallTop,sharedSideSpan,masterFrontParapet,masterFrontParapetWall,masterFrontParapetCoping,block,lots,blockView,focusUnit,showBlock,configureLot,root,wallLabelFrame,dataLines,carportAreaSelection,carportAreaBounds,upperSoilExit,upperSoilExhaustPoints,upperVentRiser,measurements,selectObject,westRoofDrain,westRoofDrainUpperPoints,westRoofDrainLowerPoints,siteDrainagePoints,soilExit,balconyFloorDrain,balconyDrainDropPoints,floorChase,serviceInterconnect,serviceConnectionRoutes,pullBox,eastRoofDrain,eastRoofDrainUpperPoints,eastRoofDrainLowerPoints,freshWaterRoutes,rainDrainageRoutes,stairRailPoints,railEdgeOffset,soilExhaustPoints,copingHeight,state,systems,objects,renderer,camera,controls,sync,isolate,showAll,setView,reviewedOpenings,wallPieces,photoOnly,roofPlanes,balconyRoof,innerBalconyRoof,innerEastRoofDrainUpperPoints,balconyGap,canopyGroups,canopySoffits,plot,siteGroup,siteLabels,wallLabels,wallLabelGroups,wallSurfaceDefinitions,userElectrical,propertyElectrical,groundFinishedFloor,carportFooting,serviceFloor,carportDrain,terrain,stair,kitchenCounter,rearFirewall,bedroomConvenience,roofApexHeight,firewallApexHeight,westFirewallEndZ,rightRoofCut,rightRoofSpec,bathroomRoof,bathroomRoofRegions,frontParapet,southWallTop,bathSouthExtraHeight,bathSouthTop,stairwellLighting,electricalCircuits,circuitRoutes,powerOutlets,servicePanel,panel,isolateCircuit,showAllCircuits,guestRoomElectrical};
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();document.querySelector('#error').hidden=false;});
